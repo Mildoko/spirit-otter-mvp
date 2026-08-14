@@ -17,7 +17,10 @@ describe("public emotion feedback", () => {
   it("uses qualitative current-state cues without exposing scores", () => {
     const feedback = buildPublicEmotionFeedback(base);
     expect(feedback.cues.length).toBeGreaterThan(0);
-    expect(JSON.stringify(feedback)).not.toMatch(/0\.8|0\.75|confidence/);
+    expect(feedback).not.toHaveProperty("confidence");
+    expect(feedback).not.toHaveProperty("raw");
+    expect(feedback).not.toHaveProperty("smoothed");
+    expect(feedback.cues.every((cue) => typeof cue.text === "string" && !/\d/.test(cue.text))).toBe(true);
   });
 
   it("describes meaningful softening relative to the previous turn", () => {

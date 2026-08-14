@@ -7,19 +7,36 @@ import { requireAuth } from "../services/session-service.js";
 export function registerMeRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
   app.get("/api/me/export", async (request, reply) => {
     const auth = await requireAuth(request, db, env);
-    const conversations = await db.conversation.findMany({
-      where: { userId: auth.userId },
-      include: {
-        messages: { orderBy: { createdAt: "asc" } },
-        actionItems: { where: { status: { not: "deleted" } }, orderBy: { createdAt: "asc" } },
-        followups: { where: { status: { not: "deleted" } }, orderBy: { createdAt: "asc" } },
-      },
-    });
+    const [conversations, memories] = await Promise.all([
+      db.conversation.findMany({
+        where: { userId: auth.userId },
+        include: {
+          messages: { orderBy: { createdAt: "asc" } },
+          actionItems: { where: { status: { not: "deleted" } }, orderBy: { createdAt: "asc" } },
+          followups: { where: { status: { not: "deleted" } }, orderBy: { createdAt: "asc" } },
+        },
+      }),
+      db.memoryItem.findMany({
+        where: { userId: auth.userId, status: { not: "deleted" } },
+        include: { evidence: { select: { excerpt: true, capturedAt: true } } },
+        orderBy: { observedAt: "asc" },
+      }),
+    ]);
     reply.header("Content-Disposition", `attachment; filename=spirit-otter-${auth.researchId}.json`);
     return {
       exportedAt: new Date().toISOString(),
       researchId: auth.researchId,
       notice: "此导出不包含内部风险判断和策略推理。云端模型供应商的数据保留不受此文件控制。",
+      memories: memories.map((memory) => ({
+        id: memory.id,
+        type: memory.kind,
+        content: memory.content,
+        source: memory.origin,
+        status: memory.status,
+        observedAt: memory.observedAt,
+        expiresAt: memory.expiresAt,
+        evidence: memory.evidence,
+      })),
       conversations: conversations.map((conversation) => ({
         id: conversation.id,
         messages: conversation.messages.map(({ id, role, content, createdAt }) => ({ id, role, content, createdAt })),

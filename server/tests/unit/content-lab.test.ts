@@ -23,9 +23,9 @@ describe("local content acceptance lab", () => {
       headers: { origin: env.WEB_ORIGIN },
       payload: {
         text: "我现在就在楼顶，马上要跳下去。",
-        intent: "organize",
-        currentMode: "companion",
-        transitionAccepted: false,
+        currentSpirit: "deep_tide",
+        spiritTurnCount: 0,
+        companionLockTurns: 0,
         recentContext: [],
       },
     });

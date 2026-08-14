@@ -1,4 +1,4 @@
-import type { ChatTurnResponse, EmotionState, PublicEmotionFeedback, RawSignals, ResponsePlan, RiskLevel } from "@otter/shared";
+import type { ChatTurnResponse, EmotionState, PublicEmotionFeedback, RawSignals, ResponsePlan, RiskLevel, RuntimeInfo } from "@otter/shared";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -10,7 +10,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...init,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { ...(init?.body === undefined ? {} : { "Content-Type": "application/json" }), ...init?.headers },
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ error: { code: "REQUEST_FAILED", message: "请求失败" } }));
@@ -24,7 +24,7 @@ export interface BootstrapData {
   researchId: string;
   researchContact: string;
   aiReminder: string;
-  conversation: { id: string; mode: "companion" | "organize" };
+  conversation: { id: string };
   messages: Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>;
   actions: Array<{ id: string; text: string; status: string; createdAt: string }>;
   followups: Array<{ id: string; actionId: string; dueAt: string; status: string; action: { id: string; text: string; status: string } }>;
@@ -45,16 +45,16 @@ export interface DevEvaluation {
 }
 
 export const api = {
+  runtime: () => request<RuntimeInfo>("/runtime"),
   devStatus: () => request<{ localTestMode: boolean; modelConfigured: boolean; provider: string; model: string }>("/dev/status"),
-  devEvaluate: (body: { text: string; intent: "auto" | "talk" | "organize"; currentMode: "companion" | "organize"; transitionAccepted: boolean; recentContext: string[] }) => request<DevEvaluation>("/dev/evaluate", { method: "POST", body: JSON.stringify(body) }),
+  devEvaluate: (body: { text: string; currentSpirit: "deep_tide" | "shore_pick"; spiritTurnCount: number; companionLockTurns: number; recentContext: string[] }) => request<DevEvaluation>("/dev/evaluate", { method: "POST", body: JSON.stringify(body) }),
   bootstrap: () => request<BootstrapData>("/session/bootstrap"),
   redeem: (body: Record<string, unknown>) => request<{ researchId: string; conversationId: string }>("/auth/redeem-invite", { method: "POST", body: JSON.stringify(body) }),
-  turn: (body: { conversationId: string; text: string; intent: "auto" | "talk" | "organize" }) => request<ChatTurnResponse>("/chat/turn", {
+  turn: (body: { conversationId: string; text: string }) => request<ChatTurnResponse>("/chat/turn", {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(body),
   }),
-  transition: (id: string, decision: "accept" | "decline") => request<{ mode: "companion" | "organize" }>(`/mode-transitions/${id}/respond`, { method: "POST", body: JSON.stringify({ decision }) }),
   confirmAction: (id: string, decision: "confirm" | "abandon", text?: string) => request(`/actions/${id}/confirm`, { method: "POST", body: JSON.stringify({ decision, text }) }),
   updateAction: (id: string, status: "completed" | "deferred" | "deleted") => request(`/actions/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   createFollowup: (actionId: string, dueAt: string) => request("/followups", { method: "POST", body: JSON.stringify({ actionId, dueAt, authorized: true }) }),

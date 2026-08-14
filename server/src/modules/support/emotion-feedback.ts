@@ -1,6 +1,6 @@
 import type { EmotionState, PublicEmotionCue, PublicEmotionFeedback } from "@otter/shared";
 
-type PreviousState = Pick<EmotionState, "valence" | "arousal" | "stressLoad" | "cognitiveOverload">;
+type PreviousState = Pick<EmotionState, "valence" | "arousal" | "stressLoad" | "cognitiveOverload" | "supportNeed">;
 
 const CHANGE_THRESHOLD = 0.1;
 
@@ -42,6 +42,10 @@ export function buildPublicEmotionFeedback(
         magnitude: Math.abs(current.cognitiveOverload - previous.cognitiveOverload),
         cue: changedCue("overload", current.cognitiveOverload - previous.cognitiveOverload, "思绪清楚了一点", "思绪更拥挤了"),
       },
+      {
+        magnitude: Math.abs(current.supportNeed - previous.supportNeed),
+        cue: changedCue("support", current.supportNeed - previous.supportNeed, "此刻更能自己站稳一点", "此刻更需要有人陪着"),
+      },
     ];
     cues = changes
       .filter((item): item is { magnitude: number; cue: PublicEmotionCue } => Boolean(item.cue))
@@ -56,6 +60,7 @@ export function buildPublicEmotionFeedback(
       { score: current.cognitiveOverload, cue: { dimension: "overload", text: "思绪有些拥挤", tone: "steady" } },
       { score: current.arousal, cue: { dimension: "arousal", text: "心绪还绷着", tone: "steady" } },
       { score: Math.max(0, -current.valence), cue: { dimension: "valence", text: "此刻的情绪有些沉", tone: "steady" } },
+      { score: current.supportNeed, cue: { dimension: "support", text: "此刻更需要一点支持", tone: "steady" } },
     ];
     cues = currentCues
       .filter((item) => item.score >= 0.45)

@@ -33,12 +33,18 @@ const envSchema = z.object({
   COOKIE_SECURE: booleanFromString,
   RESEARCH_CONTACT: z.string().default("请联系现场研究人员"),
   LOCAL_TEST_MODE: booleanFromStringDefaultFalse,
+  OTTER_RUNTIME_MODE: z.enum(["full", "demo", "lab"]).default("full"),
+  BUILD_VERSION: z.string().min(1).default("auto"),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
-  const result = envSchema.safeParse(source);
+  const normalized = { ...source };
+  if (!normalized.OTTER_RUNTIME_MODE && normalized.LOCAL_TEST_MODE === "true") {
+    normalized.OTTER_RUNTIME_MODE = "lab";
+  }
+  const result = envSchema.safeParse(normalized);
   if (!result.success) {
     const details = result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
     throw new Error(`环境配置无效：${details}`);
@@ -48,6 +54,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   }
   if (result.data.NODE_ENV === "production" && result.data.LOCAL_TEST_MODE) {
     throw new Error("生产模式禁止启用 LOCAL_TEST_MODE");
+  }
+  if (result.data.NODE_ENV === "production" && result.data.OTTER_RUNTIME_MODE !== "full") {
+    throw new Error("生产模式只允许 full 运行模式");
   }
   return result.data;
 }

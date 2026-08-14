@@ -8,7 +8,10 @@
     "dev": "concurrently -n server,web -c cyan,blue \"npm run dev -w @otter/server\" \"npm run dev -w @otter/web\"",
     "predev:lab": "npm run build",
     "dev:lab": "npm run start:lab -w @otter/server",
+    "predev:demo": "npm run build",
+    "dev:demo": "npm run start:demo -w @otter/server",
     "test": "npm run test -w @otter/shared && npm run test -w @otter/server && npm run test -w @otter/web",
+    "pretest:e2e": "npm run build",
     "test:e2e": "npm run test:e2e -w @otter/web",
     "test:acceptance": "npm run test:acceptance -w @otter/server",
     "test:integration": "npm run test:integration -w @otter/server",
@@ -18,6 +21,19 @@
     "invites": "npm run invites -w @otter/server --",
     "cleanup": "npm run cleanup -w @otter/server",
     "export:research": "npm run export:research -w @otter/server"
+    ,"prepreflight": "npm run build -w @otter/server"
+    ,"preflight": "node server/dist/scripts/preflight.js"
+    ,"prepreflight:demo": "npm run build -w @otter/server"
+    ,"preflight:demo": "node server/dist/scripts/preflight.js --mode=demo"
+    ,"prepreflight:full": "npm run build -w @otter/server"
+    ,"preflight:full": "node server/dist/scripts/preflight.js --mode=full"
+    ,"init:full": "npm run init:full -w @otter/server"
+    ,"report:acceptance": "npm run report:acceptance -w @otter/server"
+    ,"test:model": "npm run test:model -w @otter/server"
+    ,"test:e2e:demo": "node scripts/run-demo-e2e.mjs"
+    ,"test:e2e:full": "node scripts/run-full-e2e.mjs"
+    ,"prepackage:testable": "npm run typecheck && npm test && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
+    ,"package:testable": "node scripts/package-testable.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"
