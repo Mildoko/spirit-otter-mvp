@@ -1,5 +1,6 @@
 process.env.NODE_ENV ??= "development";
 process.env.LOCAL_TEST_MODE = "true";
+process.env.OTTER_RUNTIME_MODE = "lab";
 process.env.DATABASE_URL ??= "postgresql://unused:unused@localhost:5432/unused";
 process.env.SESSION_SECRET ??= "local-content-lab-secret-at-least-thirty-two-characters";
 process.env.WEB_ORIGIN ??= "http://localhost:3001";

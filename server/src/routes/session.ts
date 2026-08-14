@@ -46,7 +46,7 @@ export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, en
       researchId: auth.researchId,
       researchContact: env.RESEARCH_CONTACT,
       aiReminder: "你正在与 AI 系统互动，它不能替代专业医疗或现实中的紧急帮助。",
-      conversation: { id: conversation.id, mode: conversation.mode },
+      conversation: { id: conversation.id },
       messages: rawMessages.reverse().map((message) => ({ ...message, createdAt: message.createdAt.toISOString() })),
       actions: actions.map((action) => ({ ...action, createdAt: action.createdAt.toISOString(), updatedAt: action.updatedAt.toISOString() })),
       followups: followups.map((item) => ({

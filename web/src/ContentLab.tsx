@@ -16,9 +16,9 @@ const riskLabels = { low: "低", elevated: "升高", high: "高", imminent: "迫
 
 export function ContentLab() {
   const [text, setText] = useState<string>(samples[0][1]);
-  const [intent, setIntent] = useState<"auto" | "talk" | "organize">("auto");
-  const [currentMode, setCurrentMode] = useState<"companion" | "organize">("companion");
-  const [transitionAccepted, setTransitionAccepted] = useState(false);
+  const [currentSpirit, setCurrentSpirit] = useState<"deep_tide" | "shore_pick">("deep_tide");
+  const [spiritTurnCount, setSpiritTurnCount] = useState(0);
+  const [companionLockTurns, setCompanionLockTurns] = useState(0);
   const [context, setContext] = useState("");
   const [result, setResult] = useState<DevEvaluation | null>(null);
   const [status, setStatus] = useState<{ modelConfigured: boolean; provider: string; model: string } | null>(null);
@@ -31,11 +31,11 @@ export function ContentLab() {
 
   const requestBody = useMemo(() => ({
     text,
-    intent,
-    currentMode,
-    transitionAccepted,
+    currentSpirit,
+    spiritTurnCount,
+    companionLockTurns,
     recentContext: context.split("\n").map((line) => line.trim()).filter(Boolean).slice(-12),
-  }), [text, intent, currentMode, transitionAccepted, context]);
+  }), [text, currentSpirit, spiritTurnCount, companionLockTurns, context]);
 
   const evaluate = async () => {
     if (!text.trim()) return;
@@ -49,7 +49,7 @@ export function ContentLab() {
   return (
     <main className="lab-shell">
       <header className="lab-header">
-        <div><p className="eyebrow">LOCAL CONTENT LAB</p><h1>灵体水獭内容验收台</h1><p>免邀请码、免数据库，只检查内容、模式与安全路由。</p></div>
+        <div><p className="eyebrow">LOCAL CONTENT LAB</p><h1>灵体水獭内容验收台</h1><p>免邀请码、免数据库，只检查角色、自动路由与安全边界。</p></div>
         <div className="lab-status"><strong>仅限本地测试</strong><span>{status?.modelConfigured ? `${status.provider} / ${status.model}` : "本地降级回复（未配置模型密钥）"}</span></div>
       </header>
 
@@ -59,10 +59,10 @@ export function ContentLab() {
           <div className="sample-list">{samples.map(([label, value]) => <button key={label} onClick={() => setText(value)}>{label}</button>)}</div>
           <label>用户内容<textarea value={text} onChange={(event) => setText(event.target.value)} rows={7} /></label>
           <div className="lab-controls">
-            <label>意图<select value={intent} onChange={(event) => setIntent(event.target.value as typeof intent)}><option value="auto">自动</option><option value="talk">想说说</option><option value="organize">帮我整理</option></select></label>
-            <label>当前模式<select value={currentMode} onChange={(event) => setCurrentMode(event.target.value as typeof currentMode)}><option value="companion">陪伴</option><option value="organize">整理</option></select></label>
+            <label>当前灵格<select value={currentSpirit} onChange={(event) => setCurrentSpirit(event.target.value as typeof currentSpirit)}><option value="deep_tide">深汐</option><option value="shore_pick">拾岸</option></select></label>
+            <label>已保持轮数<input type="number" min="0" value={spiritTurnCount} onChange={(event) => setSpiritTurnCount(Number(event.target.value))} /></label>
+            <label>陪伴锁定轮数<input type="number" min="0" max="2" value={companionLockTurns} onChange={(event) => setCompanionLockTurns(Number(event.target.value))} /></label>
           </div>
-          <label className="lab-checkbox"><input type="checkbox" checked={transitionAccepted} onChange={(event) => setTransitionAccepted(event.target.checked)} />模拟用户已经接受模式切换</label>
           <label>最近上下文（可选，每行一条）<textarea value={context} onChange={(event) => setContext(event.target.value)} rows={4} /></label>
           <button className="lab-run" disabled={busy || !text.trim()} onClick={() => void evaluate()}>{busy ? "正在评估…" : "运行内容验收"}</button>
           {error && <p className="inline-error" role="alert">{error}</p>}
@@ -74,7 +74,8 @@ export function ContentLab() {
           {result && <>
             <div className="lab-summary">
               <div><span>风险</span><strong className={`risk-${result.riskLevel}`}>{riskLabels[result.riskLevel]}</strong></div>
-              <div><span>表面模式</span><strong>{result.plan.surfaceMode}</strong></div>
+              <div><span>当前灵格</span><strong>{result.plan.activeSpirit}</strong></div>
+              <div><span>过渡</span><strong>{result.plan.transitionStyle}</strong></div>
               <div><span>支持模式</span><strong>{result.plan.supportMode}</strong></div>
               <div><span>场景</span><strong>{result.plan.sceneState}</strong></div>
               <div><span>来源</span><strong>{result.source === "cloud_model" ? "云端模型" : "本地降级"}</strong></div>

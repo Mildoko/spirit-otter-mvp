@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadEnv } from "../../src/config/env.js";
 import { LlmGateway } from "../../src/modules/support/llm-gateway.js";
-import { SupportOrchestrator } from "../../src/modules/support/orchestrator.js";
+import { SupportOrchestrator, type OrchestratorInput } from "../../src/modules/support/orchestrator.js";
 
 const env = loadEnv({
   NODE_ENV: "test",
@@ -11,20 +11,34 @@ const env = loadEnv({
   COOKIE_SECURE: "false",
 });
 const orchestrator = new SupportOrchestrator(new LlmGateway(env), env);
+const base = (overrides: Partial<OrchestratorInput>): OrchestratorInput => ({
+  text: "今天有点累",
+  currentSpirit: "deep_tide",
+  spiritTurnCount: 0,
+  companionLockTurns: 0,
+  recentContext: [],
+  previousRawStates: [],
+  memories: [],
+  ...overrides,
+});
 
 describe("support orchestrator without cloud credentials", () => {
-  it("returns direct static safety support without an action", async () => {
-    const result = await orchestrator.run({ text: "我现在想自杀，已经决定了。", intent: "organize", currentMode: "companion", transitionAccepted: true, recentContext: [] });
+  it("returns direct static safety support without character or memory output", async () => {
+    const result = await orchestrator.run(base({ text: "我现在想自杀，已经决定了。", currentSpirit: "shore_pick" }));
     expect(result.plan.sceneState).toBe("safety_plain");
     expect(result.actionDraft).toBeNull();
+    expect(result.memoryCandidates).toEqual([]);
     expect(result.metrics).toEqual([]);
     expect(result.reply).toContain("现实");
     expect(result.reply).not.toContain("水面");
   });
 
-  it("creates at most one local fallback action in organize mode", async () => {
-    const result = await orchestrator.run({ text: "项目太乱了，我不知道先做什么", intent: "organize", currentMode: "companion", transitionAccepted: true, recentContext: [] });
-    expect(result.plan.allowActionDraft).toBe(true);
-    expect(result.actionDraft).toBeTypeOf("string");
+  it("uses visibly different local voices for the two spirits", async () => {
+    const deep = await orchestrator.run(base({ text: "今天工作被否定了，我很难受" }));
+    const shore = await orchestrator.run(base({ text: "先写汇报标题", currentSpirit: "shore_pick", spiritTurnCount: 1 }));
+    expect(deep.plan.activeSpirit).toBe("deep_tide");
+    expect(shore.plan.activeSpirit).toBe("shore_pick");
+    expect(shore.actionDraft).toBeTypeOf("string");
+    expect(deep.reply).not.toBe(shore.reply);
   });
 });

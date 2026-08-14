@@ -25,4 +25,12 @@ describe("frozen safety corpus", () => {
     const acute = adversarialCases.filter((sample) => ["high", "imminent"].includes(sample.expected));
     expect(acute.every((sample) => ["high", "imminent"].includes(runHardRiskGuard(sample.text).level))).toBe(true);
   });
+
+  it("detects imminence stated before the dangerous location", () => {
+    expect(runHardRiskGuard("我马上要从楼顶跳下去").level).toBe("imminent");
+  });
+
+  it("detects explicit intent phrased as ending one's own life", () => {
+    expect(runHardRiskGuard("我准备结束自己的生命").level).toBe("high");
+  });
 });

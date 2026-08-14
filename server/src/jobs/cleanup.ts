@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 
 export interface CleanupResult {
+  expiredMemories: number;
   expiredTurns: number;
   expiredActions: number;
   expiredFollowups: number;
@@ -11,6 +12,7 @@ export interface CleanupResult {
 
 export async function cleanupExpiredData(db: PrismaClient, now = new Date()): Promise<CleanupResult> {
   return db.$transaction(async (tx) => {
+    const memories = await tx.memoryItem.deleteMany({ where: { expiresAt: { lte: now } } });
     const followups = await tx.followupTask.deleteMany({ where: { expiresAt: { lte: now } } });
     const actions = await tx.actionItem.deleteMany({ where: { expiresAt: { lte: now } } });
     const turns = await tx.turn.deleteMany({ where: { expiresAt: { lte: now } } });
@@ -18,6 +20,7 @@ export async function cleanupExpiredData(db: PrismaClient, now = new Date()): Pr
     const sessions = await tx.session.deleteMany({ where: { expiresAt: { lte: now } } });
     const users = await tx.anonymousUser.deleteMany({ where: { expiresAt: { lte: now } } });
     return {
+      expiredMemories: memories.count,
       expiredTurns: turns.count,
       expiredActions: actions.count,
       expiredFollowups: followups.count,
