@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: otter
+      POSTGRES_PASSWORD: otter
+      POSTGRES_DB: spirit_otter
+    ports:
+      - "5432:5432"
+    volumes:
+      - otter_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U otter -d spirit_otter"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  otter_pgdata:

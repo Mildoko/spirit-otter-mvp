@@ -1,0 +1,12 @@
+otter.local {
+  tls internal
+  encode zstd gzip
+
+  handle /api/* {
+    reverse_proxy localhost:3001
+  }
+
+  handle {
+    reverse_proxy localhost:4173
+  }
+}

@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SurfaceMode {
+  companion
+  organize
+}
+
+enum TurnStatus {
+  reserved
+  processing
+  completed
+  failed
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
+enum ActionStatus {
+  draft
+  confirmed
+  completed
+  deferred
+  deleted
+}
+
+enum FollowupStatus {
+  pending
+  completed
+  deferred
+  closed
+  deleted
+}
+
+enum TransitionStatus {
+  pending
+  accepted
+  declined
+  expired
+}
+
+model InviteCode {
+  id        String   @id @default(cuid())
+  codeHash  String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+  usedById  String?  @unique
+  usedBy    AnonymousUser? @relation(fields: [usedById], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt, usedAt])
+  @@map("invite_codes")
+}
+
+model AnonymousUser {
+  id                        String   @id @default(cuid())
+  researchId                String   @unique
+  adultConfirmedAt          DateTime
+  aiDisclosureAcceptedAt    DateTime
+  cloudProcessingAcceptedAt DateTime
+  dataConsentAcceptedAt     DateTime
+  createdAt                 DateTime @default(now())
+  lastActiveAt              DateTime @default(now())
+  expiresAt                 DateTime
+  invite                    InviteCode?
+  sessions                  Session[]
+  conversations             Conversation[]
+  behaviorEvents            BehaviorEvent[]
+
+  @@index([expiresAt])
+  @@map("anonymous_users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt DateTime
+  user      AnonymousUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+}
+
+model Conversation {
+  id               String      @id @default(cuid())
+  userId           String
+  mode             SurfaceMode @default(companion)
+  processingTurnId String?     @unique
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  user             AnonymousUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  turns            Turn[]
+  messages         Message[]
+  stateSnapshots   StateSnapshot[]
+  supportEvents    SupportEvent[]
+  actionItems      ActionItem[]
+  followups        FollowupTask[]
+  safetyEvents     SafetyEvent[]
+  transitions      ModeTransition[]
+
+  @@index([userId, updatedAt])
+  @@map("conversations")
+}
+
+model Turn {
+  id             String     @id @default(cuid())
+  conversationId String
+  idempotencyKey String
+  status         TurnStatus @default(reserved)
+  intent         String
+  resultJson     Json?
+  errorCode      String?
+  provider       String?
+  model          String?
+  latencyMs      Int?
+  promptTokens   Int?
+  outputTokens   Int?
+  createdAt      DateTime   @default(now())
+  completedAt    DateTime?
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  stateSnapshot  StateSnapshot?
+  supportEvent   SupportEvent?
+  actionItem     ActionItem?
+  safetyEvent    SafetyEvent?
+  transition     ModeTransition?
+
+  @@unique([conversationId, idempotencyKey])
+  @@index([conversationId, status])
+  @@index([expiresAt])
+  @@map("turns")
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  turnId         String
+  role           MessageRole
+  content        String
+  createdAt      DateTime    @default(now())
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn           Turn         @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([expiresAt])
+  @@map("messages")
+}
+
+model StateSnapshot {
+  id             String   @id @default(cuid())
+  conversationId String
+  turnId         String   @unique
+  valence        Float
+  arousal        Float
+  stressLoad     Float
+  cognitiveOverload Float
+  supportNeed    Float
+  confidence     Float
+  evidenceJson   Json
+  validUntil     DateTime
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn           Turn @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, validUntil])
+  @@index([expiresAt])
+  @@map("state_snapshots")
+}
+
+model SupportEvent {
+  id              String   @id @default(cuid())
+  conversationId  String
+  turnId          String   @unique
+  surfaceMode     SurfaceMode
+  supportMode     String
+  riskLevel       String
+  primaryStrategy String
+  planJson        Json
+  promptVersion   String
+  policyVersion   String
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn            Turn @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([expiresAt])
+  @@map("support_events")
+}
+
+model ActionItem {
+  id             String       @id @default(cuid())
+  conversationId String
+  turnId         String       @unique
+  text           String
+  status         ActionStatus @default(draft)
+  confirmedAt    DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn           Turn @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  followups      FollowupTask[]
+
+  @@index([conversationId, status])
+  @@index([expiresAt])
+  @@map("action_items")
+}
+
+model FollowupTask {
+  id             String         @id @default(cuid())
+  conversationId String
+  actionId       String
+  dueAt          DateTime
+  status         FollowupStatus @default(pending)
+  shownAt        DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  action         ActionItem @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status, dueAt])
+  @@index([expiresAt])
+  @@map("followup_tasks")
+}
+
+model ModeTransition {
+  id             String           @id @default(cuid())
+  conversationId String
+  turnId         String           @unique
+  targetMode     SurfaceMode
+  status         TransitionStatus @default(pending)
+  respondedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn           Turn @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status])
+  @@index([expiresAt])
+  @@map("mode_transitions")
+}
+
+model SafetyEvent {
+  id             String   @id @default(cuid())
+  conversationId String
+  turnId         String   @unique
+  riskLevel      String
+  ruleCodesJson  Json
+  disposition    String
+  researcherHelpRequestedAt DateTime?
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn           Turn @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([expiresAt])
+  @@map("safety_events")
+}
+
+model BehaviorEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  eventType  String
+  metadataJson Json?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  user       AnonymousUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([expiresAt])
+  @@map("behavior_events")
+}

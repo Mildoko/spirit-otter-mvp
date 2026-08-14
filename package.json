@@ -1,0 +1,28 @@
+{
+  "name": "spirit-otter-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["packages/*", "server", "web"],
+  "scripts": {
+    "build": "npm run build -w @otter/shared && npm run build -w @otter/server && npm run build -w @otter/web",
+    "dev": "concurrently -n server,web -c cyan,blue \"npm run dev -w @otter/server\" \"npm run dev -w @otter/web\"",
+    "predev:lab": "npm run build",
+    "dev:lab": "npm run start:lab -w @otter/server",
+    "test": "npm run test -w @otter/shared && npm run test -w @otter/server && npm run test -w @otter/web",
+    "test:e2e": "npm run test:e2e -w @otter/web",
+    "test:acceptance": "npm run test:acceptance -w @otter/server",
+    "test:integration": "npm run test:integration -w @otter/server",
+    "typecheck": "npm run typecheck -w @otter/shared && npm run typecheck -w @otter/server && npm run typecheck -w @otter/web",
+    "db:generate": "npm run db:generate -w @otter/server",
+    "db:migrate": "npm run db:migrate -w @otter/server",
+    "invites": "npm run invites -w @otter/server --",
+    "cleanup": "npm run cleanup -w @otter/server",
+    "export:research": "npm run export:research -w @otter/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
