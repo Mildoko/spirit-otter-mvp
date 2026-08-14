@@ -1,0 +1,85 @@
+# 灵体水獭一体双模式 MVP
+
+面向受控、预约式成年人研究的 Web MVP。产品只有一个灵体水獭角色，以“陪伴”和“整理”两种明确模式提供支持；整理模式每轮最多形成一个可编辑的小行动。此项目不是医疗、心理诊断或紧急救援服务，也不得直接用于公网开放注册。
+
+## 已实现范围
+
+- 一次性邀请码、四项单独同意、匿名会话和安全 Cookie
+- 陪伴/整理模式、显式模式授权、一个草稿行动、站内回访
+- 硬规则预筛、结构化模型信号、确定性政策引擎和静态高风险响应
+- DeepSeek 默认、OpenAI-compatible 的厂商中立模型网关
+- turn 幂等、同会话单并发、模型调用不占用数据库事务
+- 30 天保留、用户导出/删除、本地匿名研究导出
+- 一个统一水獭资产、CSS 四场景与无沉浸的安全状态
+- 120 条冻结中文安全语料和自动回归
+
+## 本地启动
+
+要求 Node.js 22+、Postgres 16+。局域网正式测试还需要 Caddy 和研究设备预装的本地 CA。
+
+1. 复制 `.env.example` 为 `.env`，设置随机 `SESSION_SECRET` 和数据库连接。正式试验必须填写 `LLM_API_KEY`；开发环境留空时只会使用克制的本地降级回复。
+2. 启动 Postgres。安装了 Docker 的环境可运行 `docker compose up -d db`。
+3. 运行 `npm install`、`npm run db:generate`、`npm run db:migrate`。
+4. 运行 `npm run invites -- 5` 生成测试邀请码。
+5. 开发模式运行 `npm run dev`；正式局域网入口按 `infra/Caddyfile` 配置为 `https://otter.local`。
+
+常用检查：
+
+```text
+npm run typecheck
+npm test
+npm run build
+npm run cleanup
+npm run export:research
+```
+
+Postgres 集成测试需要先把迁移部署到独立测试库，并设置 `TEST_DATABASE_URL` 后运行 `npm run test:integration`。完整服务启动后，设置一次性 `E2E_INVITE_CODE` 与可选 `E2E_BASE_URL`，运行 `npm run test:e2e`。没有这些现场依赖时，两组测试会明确跳过，不会被误报为通过。
+
+生产环境使用 `NODE_ENV=production`，缺少模型密钥时服务会拒绝启动。`GET /api/health` 只返回可用状态，不返回厂商、模型或内部错误。
+
+## 快速内容验收（无需数据库）
+
+运行：
+
+```text
+npm run dev:lab
+```
+
+然后打开：
+
+```text
+http://localhost:3001/?lab=1
+```
+
+该命令会先构建验收页面，再由本地验收服务统一提供页面与 API，不依赖前端热重载工具。
+
+内容验收台不需要邀请码、登录、HTTPS 或可用的 Postgres。未配置 `LLM_API_KEY` 时使用本地降级回复；如果根目录 `.env.local` 中配置了密钥，则调用真实模型。它会展示风险等级、模式、场景、内部工作状态、允许/禁止内容、最终回复和行动草稿，并内置普通倾诉、过载、高风险、提示注入与依赖诱导样本。
+
+该入口仅在 `LOCAL_TEST_MODE=true` 时由后端注册，生产环境会拒绝启动此模式。它用于快速内容验收，不替代 Postgres 集成测试、完整浏览器 E2E 或现场安全评估。
+
+## 模型配置
+
+默认配置为：
+
+```env
+LLM_PROVIDER=deepseek
+LLM_BASE_URL=https://api.deepseek.com
+LLM_API_KEY=
+LLM_MODEL=deepseek-v4-flash
+LLM_JSON_MODE=true
+LLM_TIMEOUT_MS=15000
+```
+
+更换兼容厂商只需要修改这些变量，但必须重新运行兼容测试、120 条安全回归和五人预试。不要把 API 密钥放进前端、日志或版本库。
+
+## 目录
+
+- `packages/shared`：前后端共享公开类型
+- `server`：Fastify API、Prisma 数据层、支持引擎和测试
+- `web`：React 水面体验
+- `infra`：Postgres 与局域网 HTTPS 配置
+- `docs`：产品规则、安全处置、研究和运维材料
+
+## 重要边界
+
+当前成年人机制仅为自我声明，安全响应依赖现场研究者可被主动请求，因而只适用于研究者管理设备上的受控预约测试。若转为公开服务，必须先完成正式的法律、伦理、安全和未成年人保护评估；当前实现不能直接视为满足公开服务要求。
