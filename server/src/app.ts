@@ -12,14 +12,23 @@ import { registerHealthRoute } from "./routes/health.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerSessionRoutes } from "./routes/session.js";
 import { registerChatRoutes } from "./routes/chat.js";
-import { registerModeTransitionRoutes } from "./routes/mode-transitions.js";
 import { registerActionRoutes } from "./routes/actions.js";
 import { registerFollowupRoutes } from "./routes/followups.js";
 import { registerMeRoutes } from "./routes/me.js";
 import { registerSafetyRoutes } from "./routes/safety.js";
 import { registerDevRoutes } from "./routes/dev.js";
+import { registerRuntimeRoute } from "./routes/runtime.js";
+import { registerDemoRoutes } from "./routes/demo.js";
+import { DemoStore } from "./demo/store.js";
+import { validateCharacterRegistry } from "./modules/character/schemas.js";
 
-export async function buildApp(env: AppEnv, db: PrismaClient = prisma): Promise<FastifyInstance> {
+export interface AppDependencies {
+  orchestrator?: Pick<SupportOrchestrator, "run">;
+  demoStore?: DemoStore;
+}
+
+export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependencies: AppDependencies = {}): Promise<FastifyInstance> {
+  validateCharacterRegistry();
   const app = Fastify({
     logger: {
       level: env.NODE_ENV === "test" ? "silent" : "info",
@@ -54,16 +63,26 @@ export async function buildApp(env: AppEnv, db: PrismaClient = prisma): Promise<
   });
 
   const gateway = new LlmGateway(env);
-  const orchestrator = new SupportOrchestrator(gateway, env);
-  registerHealthRoute(app, db);
-  registerAuthRoutes(app, db, env);
-  registerSessionRoutes(app, db, env);
-  registerChatRoutes(app, db, env, orchestrator);
-  registerModeTransitionRoutes(app, db, env);
-  registerActionRoutes(app, db, env);
-  registerFollowupRoutes(app, db, env);
-  registerMeRoutes(app, db, env);
-  registerSafetyRoutes(app, db, env);
-  if (env.LOCAL_TEST_MODE) registerDevRoutes(app, env, orchestrator);
+  if (env.NODE_ENV === "production" && env.OTTER_RUNTIME_MODE === "full") {
+    const probe = await gateway.probe();
+    if (!probe.ok) throw new Error(`模型兼容探测失败：${probe.reason ?? "unknown"}`);
+  }
+  const orchestrator = dependencies.orchestrator ?? new SupportOrchestrator(gateway, env);
+  registerRuntimeRoute(app, env, gateway);
+  if (env.OTTER_RUNTIME_MODE === "full") {
+    registerHealthRoute(app, db);
+    registerAuthRoutes(app, db, env);
+    registerSessionRoutes(app, db, env);
+    registerChatRoutes(app, db, env, orchestrator);
+    registerActionRoutes(app, db, env);
+    registerFollowupRoutes(app, db, env);
+    registerMeRoutes(app, db, env);
+    registerSafetyRoutes(app, db, env);
+  } else if (env.OTTER_RUNTIME_MODE === "demo") {
+    registerDemoRoutes(app, env, orchestrator, dependencies.demoStore ?? new DemoStore());
+  } else {
+    registerHealthRoute(app, db);
+    registerDevRoutes(app, env, orchestrator);
+  }
   return app;
 }

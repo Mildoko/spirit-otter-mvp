@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:lab": "tsx watch src/lab-server.ts",
+    "dev:demo": "tsx watch src/demo-server.ts",
     "start:lab": "node dist/lab-server.js",
+    "start:demo": "node dist/demo-server.js",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -22,6 +24,14 @@
     "invites": "tsx src/scripts/generate-invites.ts",
     "cleanup": "tsx src/scripts/cleanup.ts",
     "export:research": "tsx src/scripts/export-research.ts"
+    ,"prepreflight": "npm run build"
+    ,"preflight": "node dist/scripts/preflight.js"
+    ,"preinit:full": "npm run build"
+    ,"init:full": "node dist/scripts/init-full.js"
+    ,"prereport:acceptance": "npm run build"
+    ,"report:acceptance": "node dist/scripts/acceptance-report.js"
+    ,"pretest:model": "npm run build"
+    ,"test:model": "node dist/scripts/model-acceptance.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
