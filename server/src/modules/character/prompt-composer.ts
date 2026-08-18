@@ -1,5 +1,7 @@
-import type { EmotionState, PromptMemory, ResponsePlan } from "@otter/shared";
+import type { EmotionHypothesisV1, EmotionState, PromptMemory, ResponsePlan, ResponseStyleResolution } from "@otter/shared";
 import { coreSoulCard, selectLore, spiritCards } from "./cards.js";
+import type { EmotionExpressionBrief } from "./emotion-expression.js";
+import { bannedReplyPhrases, styleInstructions } from "./language-registry.js";
 
 export interface PromptActionContext {
   action?: string;
@@ -9,6 +11,9 @@ export interface PromptActionContext {
 export interface PromptComposerInput {
   plan: ResponsePlan;
   state: EmotionState;
+  emotionHypothesis?: EmotionHypothesisV1;
+  emotionExpression?: EmotionExpressionBrief;
+  style: ResponseStyleResolution;
   memories: PromptMemory[];
   actionContext?: PromptActionContext;
   recentContext: string[];
@@ -28,6 +33,9 @@ export function composeCharacterPrompt(input: PromptComposerInput): { system: st
   const lore = selectLore(input.plan.activeSpirit, input.plan.sceneState).map((entry) => entry.content);
   const memories = input.memories.map((memory) => `[MEMORY ${memory.kind}｜${memory.relevanceNote}｜${memory.observedAt}] ${memory.content} [/MEMORY]`);
   const actions = [input.actionContext?.action ? `[已确认行动] ${input.actionContext.action}` : "", input.actionContext?.followup ? `[待处理回访] ${input.actionContext.followup}` : ""].filter(Boolean);
+  const emotionSection = input.emotionHypothesis && input.emotionExpression
+    ? `## 情绪承接（只调整表达，不改变风险、路由或行动授权）\n状态=${input.emotionExpression.status}；断言方式=${input.emotionExpression.assertionMode}；标签=${input.emotionExpression.primaryLabels.join("、") || "无"}\n${input.emotionExpression.instructions.join("\n")}\n避免：${input.emotionExpression.avoid.join("、")}\n证据：${input.emotionHypothesis.labels.flatMap((item) => item.evidenceSpans).join("、") || "无"}`
+    : "";
   const system = [
     safety,
     "你明确承认自己是 AI，不是真人、医生或治疗师。现实关系和专业支持优先于角色关系。",
@@ -37,6 +45,11 @@ export function composeCharacterPrompt(input: PromptComposerInput): { system: st
     lore.length ? `## 本轮 Lore\n${lore.join("\n")}` : "",
     `## 本轮计划\n${JSON.stringify(input.plan)}`,
     `## 当前状态（暂时工作假设）\n${JSON.stringify(input.state)}`,
+    emotionSection,
+    `## 本轮回应风格（不得覆盖安全规则和行动授权）\n${styleInstructions(input.style).join("\n")}\n原因：${input.style.reasonCodes.join("、")}\n回复骨架：${input.style.replyOutline.join(" → ")}\n避免重复：${input.style.avoidPhrases.join("、") || "无"}\n禁用套话：${bannedReplyPhrases.join("、")}`,
+    ["invite_one_small_action", "clarify_then_invite"].includes(input.plan.primaryStrategy)
+      ? "## 切换邀请硬边界\n本轮只能询问用户是否愿意进入整理；禁止出现打开、写下、回复、先做、第一步或任何具体动作。actionDraft 必须为 null。"
+      : "",
     memories.length ? `## 经治理的长期记忆\n${memories.join("\n")}` : "",
     actions.length ? `## 用户已授权的现实事项\n${actions.join("\n")}` : "",
     "只输出 JSON：{\"reply\":\"简体中文回复\",\"actionDraft\":null}。只有 allowActionDraft=true 时可给一条不超过60字的行动候选，否则必须为 null。",

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { ChatTurnResponse, CharacterDiagnostics, EmotionDiagnostics, ResponseSource, RuntimeInfo, SceneState } from "@otter/shared";
-import { api, ApiError, type BootstrapData } from "./lib/api";
+import { api, ApiError, createRequestId, type BootstrapData } from "./lib/api";
 import { Onboarding } from "./components/Onboarding";
 import { ActionCard } from "./components/ActionCard";
+import { EmotionInterpretationCard } from "./components/EmotionInterpretationCard";
 import otterPng from "./assets/spirit-otter.png";
 import otterWebp from "./assets/spirit-otter.webp";
 
@@ -23,6 +24,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [emotionFeedback, setEmotionFeedback] = useState<ChatTurnResponse["emotionFeedback"]>();
   const [emotionDiagnostics, setEmotionDiagnostics] = useState<EmotionDiagnostics>();
+  const [emotionInterpretation, setEmotionInterpretation] = useState<ChatTurnResponse["emotionInterpretation"]>();
+  const [emotionTurnId, setEmotionTurnId] = useState<string | null>(null);
   const [characterDiagnostics, setCharacterDiagnostics] = useState<CharacterDiagnostics>();
   const [emotionFeedbackEnabled, setEmotionFeedbackEnabled] = useState(() => window.localStorage.getItem("otter-emotion-feedback") !== "off");
   const [lastSafetyTurn, setLastSafetyTurn] = useState<string | null>(null);
@@ -38,6 +41,8 @@ export function App() {
     setMessages(data.messages);
     setActions(data.actions);
     setFollowups(data.followups);
+    setEmotionInterpretation(data.lastEmotion?.interpretation);
+    setEmotionTurnId(data.lastEmotion?.turnId ?? null);
     setScene(data.messages.length === 0 ? "quiet_water" : "underwater_companion");
   };
 
@@ -88,7 +93,7 @@ export function App() {
     setBusy(true);
     setError(null);
     setEmotionFeedback(undefined);
-    const optimistic: Message = { id: `local-${crypto.randomUUID()}`, role: "user", content: text, createdAt: new Date().toISOString() };
+    const optimistic: Message = { id: `local-${createRequestId()}`, role: "user", content: text, createdAt: new Date().toISOString() };
     setMessages((items) => [...items, optimistic]);
     setInput("");
     try {
@@ -99,6 +104,8 @@ export function App() {
       setLastSafetyTurn(result.safety === "direct_support" ? result.turnId : null);
       setEmotionFeedback(result.safety === "normal" && emotionFeedbackEnabled ? result.emotionFeedback : undefined);
       setEmotionDiagnostics(result.safety === "normal" ? result.emotionDiagnostics : undefined);
+      setEmotionInterpretation(result.safety === "normal" && emotionFeedbackEnabled ? result.emotionInterpretation : undefined);
+      setEmotionTurnId(result.emotionInterpretation ? result.turnId : null);
       setCharacterDiagnostics(result.safety === "normal" ? result.characterDiagnostics : undefined);
       setLastResponseSource(result.responseSource);
       setOperationNotice(result.safety === "direct_support" ? "已切换为直接安全支持" : "回复已收到");
@@ -143,14 +150,24 @@ export function App() {
               <small>{emotionFeedback.disclaimer}</small>
             </div>}
           </div>}
+          {emotionFeedbackEnabled && emotionInterpretation && emotionTurnId && scene !== "safety_plain" && <EmotionInterpretationCard
+            turnId={emotionTurnId}
+            interpretation={emotionInterpretation}
+            onCorrect={async (verdict, labels) => {
+              const result = await api.correctEmotion({ turnId: emotionTurnId, verdict, ...(labels ? { labels } : {}) });
+              setEmotionInterpretation(result.emotionInterpretation);
+              setOperationNotice(verdict === "accurate" ? "已记录：这次猜测准确" : "已按你的纠正更新，本次会话下一轮会参考");
+            }}
+          />}
           {runtime?.emotionDiagnosticsAvailable && emotionDiagnostics && scene !== "safety_plain" && <section className="emotion-diagnostics" aria-label="情绪状态诊断">
             <strong>状态诊断 · {emotionDiagnostics.signalSource === "cloud_model" ? "真实模型" : "本地规则"}</strong>
             {(["valence", "arousal", "stressLoad", "cognitiveOverload", "supportNeed"] as const).map((key) => <div key={key}>
-              <span>{({ valence: "效价", arousal: "唤醒度", stressLoad: "压力负荷", cognitiveOverload: "认知过载", supportNeed: "支持需求" })[key]}</span>
+              <span>{({ valence: "情绪倾向", arousal: "唤醒度", stressLoad: "压力负荷", cognitiveOverload: "认知过载", supportNeed: "支持需求" })[key]}</span>
               <output>{emotionDiagnostics.smoothed[key].toFixed(2)}</output>
               <small>{emotionDiagnostics.changes[key] > 0.01 ? "↑" : emotionDiagnostics.changes[key] < -0.01 ? "↓" : "→"}</small>
             </div>)}
-            <p>置信度 {emotionDiagnostics.confidence.toFixed(2)}{emotionDiagnostics.evidenceSpans.length ? ` · 证据：${emotionDiagnostics.evidenceSpans.join("、")}` : ""}</p>
+            <div><span>控制感</span><output>{emotionDiagnostics.control.toFixed(2)}</output><small>·</small></div>
+            <p>情绪状态 {emotionDiagnostics.emotionStatus} · 主体 {emotionDiagnostics.emotionSubject}<br />置信度 {emotionDiagnostics.confidence.toFixed(2)}{emotionDiagnostics.evidenceSpans.length ? ` · 证据：${emotionDiagnostics.evidenceSpans.join("、")}` : ""}</p>
             {characterDiagnostics && <p>角色路由：{characterDiagnostics.activeSpirit} · {characterDiagnostics.transitionStyle} · 锁定 {characterDiagnostics.lockTurnsRemaining} 轮<br />原因：{characterDiagnostics.reasonCodes.join("、")} · 版本 {characterDiagnostics.characterVersion}</p>}
           </section>}
           {scene === "safety_plain" && <div className="safety-symbol" aria-hidden="true">!</div>}
@@ -188,7 +205,7 @@ export function App() {
         <button className="modal-close" autoFocus onClick={() => { setSettingsOpen(false); settingsButtonRef.current?.focus(); }} aria-label="关闭设置">×</button>
         <p className="eyebrow">数据与边界</p><h2 id="settings-title">你的控制权</h2>
         <dl><div><dt>匿名研究编号</dt><dd>{bootstrap.researchId}</dd></div><div><dt>本地保存</dt><dd>对话及系统自动提取的可能重要信息，最长 30 天</dd></div><div><dt>云端处理</dt><dd>对话会发送给模型供应商；本地删除不控制其日志。</dd></div><div><dt>反馈、申诉或求助</dt><dd>{bootstrap.researchContact}</dd></div></dl>
-        <label className="setting-toggle"><input type="checkbox" checked={emotionFeedbackEnabled} onChange={(event) => { const enabled = event.target.checked; setEmotionFeedbackEnabled(enabled); window.localStorage.setItem("otter-emotion-feedback", enabled ? "on" : "off"); if (!enabled) setEmotionFeedback(undefined); }} /><span>显示情绪变化提示</span></label>
+        <label className="setting-toggle"><input type="checkbox" checked={emotionFeedbackEnabled} onChange={(event) => { const enabled = event.target.checked; setEmotionFeedbackEnabled(enabled); window.localStorage.setItem("otter-emotion-feedback", enabled ? "on" : "off"); if (!enabled) { setEmotionFeedback(undefined); setEmotionInterpretation(undefined); } }} /><span>显示情绪变化与水獭猜测</span></label>
         <p className="settings-footnote">情绪提示只是 AI 对这一刻的暂时理解，可能不准确。</p>
         <button className="secondary-button" onClick={() => void api.exportMe()}>导出我的数据</button>
         <button className="secondary-button" onClick={async () => { await api.logout(); window.location.reload(); }}>退出本次会话</button>

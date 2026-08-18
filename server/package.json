@@ -32,6 +32,11 @@
     ,"report:acceptance": "node dist/scripts/acceptance-report.js"
     ,"pretest:model": "npm run build"
     ,"test:model": "node dist/scripts/model-acceptance.js"
+    ,"test:model:low-signal": "node dist/scripts/model-acceptance.js --suite=low-signal"
+    ,"test:model:expression": "node dist/scripts/model-acceptance.js --suite=expression"
+    ,"test:emotion": "node dist/scripts/emotion-evaluation.js --validate-only"
+    ,"test:model:emotion": "node dist/scripts/emotion-evaluation.js --model"
+    ,"report:emotion": "node dist/scripts/emotion-evaluation.js && node dist/scripts/emotion-expression-report.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

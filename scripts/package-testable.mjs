@@ -52,10 +52,10 @@ const packageManifest = {
   sourceCommit: sha,
   sourceDirty: dirty,
   runtime: { node: ">=22", postgres: "16+ for full mode", browser: "Chrome/Chromium" },
-  included: ["prebuilt server/web/shared dist", "source and tests", "Prisma schema and migrations", "CI and E2E configuration", "Docker/Caddy configuration", "operations and pretest documents"],
+  included: ["prebuilt server/web/shared dist", "response-style resolver, validator and 50-case language freeze set", "source and tests", "Prisma schema and migrations", "CI and E2E configuration", "Docker/Caddy configuration", "operations and pretest documents"],
   excluded: ["secrets and local env files", "node_modules", "database data and backups", "logs and test artifacts", "Git metadata"],
   validation: {
-    packageGate: ["typecheck", "unit and acceptance tests", "Postgres integration tests", "production build", "desktop and mobile demo/full E2E", "real model comparison"],
+    packageGate: ["typecheck", "unit and acceptance tests including response-style freezes", "Postgres integration tests", "production build", "desktop and mobile demo/full E2E", "24-case real model comparison"],
     demo: ["npm ci", "npm run preflight:demo", "npm run dev:demo", "npm run test:e2e:demo"],
     full: ["configure .env.local", "npm run preflight:full", "npm run init:full", "npm run test:integration", "npm run test:model", "npm run report:acceptance"],
   },

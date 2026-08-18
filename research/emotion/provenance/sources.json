@@ -1,0 +1,14 @@
+{
+  "datasetVersion": "emotion-dataset-cn-v0.1-candidate",
+  "generatedAt": "2026-08-18",
+  "sources": [
+    {
+      "sourceId": "internal-synthetic-templates-v1",
+      "type": "synthetic_candidate",
+      "generator": "scripts/generate-emotion-candidates.mjs",
+      "licenseOrConsent": "project-internal",
+      "containsRealUserText": false,
+      "reviewStatus": "pending-human-review"
+    }
+  ]
+}

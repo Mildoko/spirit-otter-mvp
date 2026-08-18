@@ -38,13 +38,15 @@ export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependenc
   });
 
   await app.register(cookie);
-  await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });
+  await app.register(cors, { origin: env.OTTER_RUNTIME_MODE === "demo" ? true : env.WEB_ORIGIN, credentials: true });
   await app.register(rateLimit, { max: env.LOCAL_TEST_MODE ? 1200 : 120, timeWindow: "1 minute" });
 
   app.addHook("onRequest", async (request, reply) => {
     if (!["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) return;
     const origin = request.headers.origin;
-    if (origin && origin !== env.WEB_ORIGIN) {
+    const requestOrigin = `${request.protocol}://${request.headers.host}`;
+    const allowedOrigin = env.OTTER_RUNTIME_MODE === "demo" ? requestOrigin : env.WEB_ORIGIN;
+    if (origin && origin !== allowedOrigin) {
       return reply.code(403).send({ error: { code: "ORIGIN_REJECTED", message: "请求来源不被允许" } });
     }
   });

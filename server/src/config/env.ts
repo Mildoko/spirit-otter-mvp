@@ -34,6 +34,8 @@ const envSchema = z.object({
   RESEARCH_CONTACT: z.string().default("请联系现场研究人员"),
   LOCAL_TEST_MODE: booleanFromStringDefaultFalse,
   OTTER_RUNTIME_MODE: z.enum(["full", "demo", "lab"]).default("full"),
+  EXPRESSION_STYLE_V2: booleanFromStringDefaultFalse,
+  EMOTION_INFERENCE_V2: booleanFromStringDefaultFalse,
   BUILD_VERSION: z.string().min(1).default("auto"),
 });
 
@@ -43,6 +45,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const normalized = { ...source };
   if (!normalized.OTTER_RUNTIME_MODE && normalized.LOCAL_TEST_MODE === "true") {
     normalized.OTTER_RUNTIME_MODE = "lab";
+  }
+  if (normalized.EXPRESSION_STYLE_V2 === undefined) {
+    normalized.EXPRESSION_STYLE_V2 = normalized.OTTER_RUNTIME_MODE === "full" || normalized.OTTER_RUNTIME_MODE === undefined ? "false" : "true";
+  }
+  if (normalized.EMOTION_INFERENCE_V2 === undefined) {
+    normalized.EMOTION_INFERENCE_V2 = normalized.OTTER_RUNTIME_MODE === "full" || normalized.OTTER_RUNTIME_MODE === undefined ? "false" : "true";
   }
   const result = envSchema.safeParse(normalized);
   if (!result.success) {

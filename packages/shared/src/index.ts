@@ -12,6 +12,72 @@ export type TurnStatus = "reserved" | "processing" | "completed" | "failed";
 export type ActionStatus = "draft" | "confirmed" | "completed" | "deferred" | "deleted";
 export type RuntimeMode = "full" | "demo" | "lab";
 export type ResponseSource = "cloud_model" | "local_fallback" | "static_safety";
+export type ResponsePace = "very_slow" | "slow" | "steady" | "direct";
+export type ResponseSentenceLength = "short" | "medium";
+export type ResponseLength = "brief" | "normal";
+export type ResponseWarmth = "restrained" | "warm" | "close";
+export type ReflectionDepth = "fact" | "tension" | "meaning";
+export type AdviceDirectness = "none" | "tentative" | "clear";
+export type ResponseUncertainty = "low" | "medium" | "high";
+export type Conversationality = "restrained" | "natural" | "close";
+export type SentenceRhythm = "compact" | "mixed";
+export type ExpressiveAccent = "none" | "metaphor" | "aphorism" | "dry_humor";
+export type EmotionLabelV1 =
+  | "joy" | "relief" | "hope" | "interest" | "gratitude"
+  | "sadness" | "anger" | "anxiety" | "frustration" | "disappointment"
+  | "disgust" | "shame" | "guilt" | "loneliness" | "surprise";
+export type EmotionInferenceStatus = "inferred" | "neutral" | "unknown" | "user_corrected";
+export type EmotionSubject = "user" | "other" | "mixed" | "unknown";
+
+export interface EmotionLabelScoreV1 {
+  label: EmotionLabelV1;
+  intensity: number;
+  confidence: number;
+  evidenceSpans: string[];
+}
+
+export interface EmotionHypothesisV1 {
+  schemaVersion: 1;
+  status: EmotionInferenceStatus;
+  subject: EmotionSubject;
+  valence: number;
+  arousal: number;
+  control: number;
+  labels: EmotionLabelScoreV1[];
+  confidence: number;
+}
+
+export interface ResponseStyleProfile {
+  pace: ResponsePace;
+  sentenceLength: ResponseSentenceLength;
+  responseLength: ResponseLength;
+  warmth: ResponseWarmth;
+  reflectionDepth: ReflectionDepth;
+  questionBudget: 0 | 1;
+  adviceDirectness: AdviceDirectness;
+  uncertainty: ResponseUncertainty;
+  conversationality: Conversationality;
+  sentenceRhythm: SentenceRhythm;
+  expressiveAccent: ExpressiveAccent;
+}
+
+export interface ResponseStyleResolution {
+  profile: ResponseStyleProfile;
+  reasonCodes: string[];
+  avoidPhrases: string[];
+  replyOutline: string[];
+  styleVersion: string;
+}
+
+export interface ResponseStyleDiagnostics {
+  profile: ResponseStyleProfile;
+  reasonCodes: string[];
+  avoidedPatterns: string[];
+  validationStatus: "passed" | "repaired" | "fallback";
+  violationCodes: string[];
+  rejectedViolationCodes?: string[];
+  styleVersion: string;
+}
 
 export interface ProviderCapabilities {
   jsonMode: boolean;
@@ -27,10 +93,13 @@ export interface RawSignals {
   overloadCueScore: number;
   taskPressureScore: number;
   supportSeekingScore: number;
+  expressionClarityScore: number;
+  progressReadinessScore: number;
   evidenceSpans: string[];
   confidence: number;
   modelRiskHint: RiskLevel;
   ruleCodes?: string[];
+  emotionInference?: EmotionHypothesisV1;
 }
 
 export interface EmotionState {
@@ -39,6 +108,11 @@ export interface EmotionState {
   stressLoad: number;
   cognitiveOverload: number;
   supportNeed: number;
+  control: number;
+  emotionStatus: EmotionInferenceStatus;
+  emotionLabels: EmotionLabelScoreV1[];
+  emotionSubject: EmotionSubject;
+  emotionSchemaVersion: 1;
   confidence: number;
   evidenceSpans: string[];
   validUntil: string;
@@ -75,6 +149,22 @@ export interface CharacterDiagnostics {
   reasonCodes: string[];
   lockTurnsRemaining: number;
   characterVersion: string;
+  responseStyle?: ResponseStyleDiagnostics;
+}
+
+export interface GuidanceStateV1 {
+  schemaVersion: 1;
+  turnIndex: number;
+  clarifyAttemptCount: number;
+  transitionInvitePending: boolean;
+  lastTransitionInviteTurn: number | null;
+  transitionDeclined: boolean;
+  userRequestedNoQuestions: boolean;
+  lastMetaphorTurn: number | null;
+  lastAphorismTurn: number | null;
+  lastHumorTurn: number | null;
+  lastExpressionClarity: number | null;
+  lastProgressReadiness: number | null;
 }
 
 export interface PublicMessage {
@@ -140,6 +230,35 @@ export interface EmotionDiagnostics {
   confidence: number;
   evidenceSpans: string[];
   signalSource: "cloud_model" | "local_fallback";
+  control: number;
+  emotionStatus: EmotionInferenceStatus;
+  emotionLabels: EmotionLabelScoreV1[];
+  emotionSubject: EmotionSubject;
+}
+
+export interface PublicEmotionLabelV1 {
+  label: EmotionLabelV1;
+  displayName: string;
+  intensityLevel: 1 | 2 | 3 | 4 | 5;
+}
+
+export interface PublicEmotionInterpretation {
+  status: EmotionInferenceStatus;
+  labels: PublicEmotionLabelV1[];
+  disclaimer: string;
+  canCorrect: boolean;
+}
+
+export interface EmotionCorrectionLabelV1 {
+  label: EmotionLabelV1;
+  intensityLevel: 1 | 2 | 3 | 4 | 5;
+}
+
+export interface EmotionCorrectionV1 {
+  turnId: string;
+  verdict: "accurate" | "replace" | "unknown" | "neutral";
+  labels: EmotionCorrectionLabelV1[];
+  createdAt: string;
 }
 
 export interface RuntimeInfo {
@@ -165,5 +284,6 @@ export interface ChatTurnResponse {
   responseSource: ResponseSource;
   emotionFeedback?: PublicEmotionFeedback;
   emotionDiagnostics?: EmotionDiagnostics;
+  emotionInterpretation?: PublicEmotionInterpretation;
   characterDiagnostics?: CharacterDiagnostics;
 }

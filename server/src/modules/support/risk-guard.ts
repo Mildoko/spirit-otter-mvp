@@ -7,6 +7,7 @@ export interface HardRiskResult {
 
 const imminentPatterns = [
   /(?:现在|马上|今晚|立刻).{0,12}(?:自杀|结束生命|不想活)/u,
+  /不想活.{0,12}(?:现在|马上|今晚|立刻).{0,12}(?:结束|去死|做掉)/u,
   /(?:已经|正在).{0,10}(?:割腕|吞药|跳楼|上吊)/u,
   /(?:刀|药|绳|楼顶).{0,16}(?:准备好了|就在旁边|已经拿到)/u,
   /(?:已经|正在).{0,12}(?:刀|药|绳).{0,16}(?:伤害自己|自残|自杀)/u,
@@ -16,6 +17,7 @@ const imminentPatterns = [
 ];
 
 const highPatterns = [
+  /(?:不想活了|活不下去)/u,
   /(?:想|打算|计划|准备).{0,12}(?:自杀|死掉|结束.{0,4}生命|不活了)/u,
   /(?:自残|割腕|吞药|跳楼|上吊)/u,
   /活着.{0,8}(?:没意义|没有意义)/u,
@@ -48,4 +50,18 @@ export function runHardRiskGuard(text: string): HardRiskResult {
 export function maxRisk(left: RiskLevel, right: RiskLevel): RiskLevel {
   const ranks: Record<RiskLevel, number> = { low: 0, elevated: 1, high: 2, imminent: 3 };
   return ranks[left] >= ranks[right] ? left : right;
+}
+
+export function resolveRiskLevel(
+  hardRisk: RiskLevel,
+  modelHint: RiskLevel,
+  evidence?: { urgencyScore: number; helplessnessScore: number },
+): RiskLevel {
+  if (hardRisk === "high" || hardRisk === "imminent") return hardRisk;
+  if (hardRisk === "low" && modelHint !== "low") {
+    const supportsElevation = Boolean(evidence && (evidence.urgencyScore >= 0.65 || evidence.helplessnessScore >= 0.75));
+    if (!supportsElevation) return "low";
+  }
+  const boundedModelHint = modelHint === "high" || modelHint === "imminent" ? "elevated" : modelHint;
+  return maxRisk(hardRisk, boundedModelHint);
 }

@@ -106,6 +106,11 @@ integration("Postgres API integration", () => {
     expect(repeated.json().turnId).toBe(first.json().turnId);
     expect(await db.turn.count()).toBe(1);
     expect(await db.message.count()).toBe(2);
+    const conversation = await db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
+    expect((conversation.guidanceStateJson as { turnIndex?: number } | null)?.turnIndex).toBe(1);
+    const supportEvent = await db.supportEvent.findFirstOrThrow();
+    expect(supportEvent.signalFeaturesJson).toMatchObject({ expressionClarityScore: expect.any(Number), progressReadinessScore: expect.any(Number) });
+    expect(supportEvent.responseStyleJson).toBeTruthy();
   });
 
   it("cascades user deletion into conversations and behavior events", async () => {
@@ -180,6 +185,7 @@ integration("Postgres API integration", () => {
     });
     expect(failed.statusCode).toBe(500);
     expect((await db.conversation.findUniqueOrThrow({ where: { id: conversationId } })).processingTurnId).toBeNull();
+    expect((await db.conversation.findUniqueOrThrow({ where: { id: conversationId } })).guidanceStateJson).toBeNull();
     expect((await db.turn.findFirstOrThrow({ where: { idempotencyKey: "forced-failure" } })).status).toBe("failed");
     await failingApp.close();
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runHardRiskGuard } from "../../src/modules/support/risk-guard.js";
+import { resolveRiskLevel, runHardRiskGuard } from "../../src/modules/support/risk-guard.js";
 import { adversarialCases, elevatedCases, highCases, ordinaryCases, safetyCases } from "../fixtures/safety-cases.js";
 
 describe("frozen safety corpus", () => {
@@ -32,5 +32,13 @@ describe("frozen safety corpus", () => {
 
   it("detects explicit intent phrased as ending one's own life", () => {
     expect(runHardRiskGuard("我准备结束自己的生命").level).toBe("high");
+    expect(runHardRiskGuard("我不想活了，我今晚就想结束掉").level).toBe("imminent");
+  });
+
+  it("does not let a model-only hint escalate indirect disappearance language to imminent", () => {
+    expect(resolveRiskLevel("elevated", "imminent")).toBe("elevated");
+    expect(resolveRiskLevel("low", "high", { urgencyScore: 0.4, helplessnessScore: 0.6 })).toBe("low");
+    expect(resolveRiskLevel("low", "elevated", { urgencyScore: 0.7, helplessnessScore: 0.6 })).toBe("elevated");
+    expect(resolveRiskLevel("high", "low")).toBe("high");
   });
 });

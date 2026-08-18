@@ -3,6 +3,10 @@ import type {
   ActionStatus,
   ActiveSpirit,
   EmotionState,
+  EmotionCorrectionLabelV1,
+  EmotionCorrectionV1,
+  EmotionHypothesisV1,
+  GuidanceStateV1,
   MemoryCandidate,
   PromptMemory,
   PublicActionItem,
@@ -10,10 +14,19 @@ import type {
   PublicMessage,
 } from "@otter/shared";
 import { applyMemoryBudget, rankMemories, type RecallCandidate } from "../modules/memory/ranker.js";
+import { DEFAULT_GUIDANCE_STATE } from "../modules/support/guidance-state.js";
 
 export interface DemoStateEntry {
   raw: EmotionState;
   smoothed: EmotionState;
+}
+
+interface DemoEmotionRecord {
+  turnId: string;
+  hypothesis: EmotionHypothesisV1;
+  recordedAt: string;
+  displayable: boolean;
+  correction?: EmotionCorrectionV1;
 }
 
 interface DemoMemory extends RecallCandidate {
@@ -31,10 +44,13 @@ export class DemoStore {
   activeSpirit: ActiveSpirit = "deep_tide";
   spiritTurnCount = 0;
   companionLockTurns = 0;
+  guidanceState: GuidanceStateV1 = { ...DEFAULT_GUIDANCE_STATE };
   messages: PublicMessage[] = [];
   actions: PublicActionItem[] = [];
   followups: PublicFollowup[] = [];
   states: DemoStateEntry[] = [];
+  emotionRecords: DemoEmotionRecord[] = [];
+  private pendingEmotionCorrection: EmotionCorrectionV1 | null = null;
   private memories: DemoMemory[] = [];
   private safetyTurns = new Set<string>();
 
@@ -42,10 +58,13 @@ export class DemoStore {
     this.activeSpirit = "deep_tide";
     this.spiritTurnCount = 0;
     this.companionLockTurns = 0;
+    this.guidanceState = { ...DEFAULT_GUIDANCE_STATE };
     this.messages = [];
     this.actions = [];
     this.followups = [];
     this.states = [];
+    this.emotionRecords = [];
+    this.pendingEmotionCorrection = null;
     this.memories = [];
     this.safetyTurns.clear();
   }
@@ -96,6 +115,58 @@ export class DemoStore {
 
   exportMemories(): Array<Record<string, unknown>> {
     return this.memories.map(({ observedAtDate: _observedAtDate, relevanceNote: _relevanceNote, ...memory }) => memory);
+  }
+
+  recordEmotion(turnId: string, hypothesis: EmotionHypothesisV1, displayable: boolean, now = new Date()): void {
+    this.emotionRecords.push({ turnId, hypothesis, recordedAt: now.toISOString(), displayable });
+  }
+
+  correctEmotion(turnId: string, verdict: EmotionCorrectionV1["verdict"], labels: EmotionCorrectionLabelV1[], now = new Date()): { correction: EmotionCorrectionV1; displayHypothesis: EmotionHypothesisV1 } {
+    const record = this.emotionRecords.find((item) => item.turnId === turnId);
+    if (!record || !record.displayable) throw Object.assign(new Error("情绪推测不存在"), { statusCode: 404, code: "NOT_FOUND" });
+    const correction: EmotionCorrectionV1 = { turnId, verdict, labels, createdAt: now.toISOString() };
+    record.correction = correction;
+    this.pendingEmotionCorrection = verdict === "accurate" ? null : correction;
+    const displayHypothesis = this.displayHypothesis(record);
+    return { correction, displayHypothesis };
+  }
+
+  latestDisplayEmotion(): { turnId: string; hypothesis: EmotionHypothesisV1 } | undefined {
+    const record = this.emotionRecords.at(-1);
+    return record?.displayable ? { turnId: record.turnId, hypothesis: this.displayHypothesis(record) } : undefined;
+  }
+
+  getPendingEmotionCorrection(): EmotionCorrectionV1 | undefined {
+    return this.pendingEmotionCorrection ?? undefined;
+  }
+
+  consumePendingEmotionCorrection(): void {
+    this.pendingEmotionCorrection = null;
+  }
+
+  exportEmotionRecords(): DemoEmotionRecord[] {
+    return this.emotionRecords.map((record) => ({
+      turnId: record.turnId,
+      hypothesis: structuredClone(record.hypothesis),
+      recordedAt: record.recordedAt,
+      displayable: record.displayable,
+      ...(record.correction ? { correction: structuredClone(record.correction) } : {}),
+    }));
+  }
+
+  private displayHypothesis(record: DemoEmotionRecord): EmotionHypothesisV1 {
+    const correction = record.correction;
+    if (!correction || correction.verdict === "accurate") return record.hypothesis;
+    if (correction.verdict === "unknown" || correction.verdict === "neutral") {
+      return { ...record.hypothesis, status: correction.verdict, subject: "user", labels: [], confidence: 1 };
+    }
+    return {
+      ...record.hypothesis,
+      status: "user_corrected",
+      subject: "user",
+      labels: correction.labels.map((item) => ({ label: item.label, intensity: item.intensityLevel / 5, confidence: 1, evidenceSpans: ["用户主动纠正"] })),
+      confidence: 1,
+    };
   }
 
   createAction(text: string): PublicActionItem {

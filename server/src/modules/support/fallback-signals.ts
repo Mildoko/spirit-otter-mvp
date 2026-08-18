@@ -1,7 +1,7 @@
 import type { RawSignals } from "@otter/shared";
 
-type ScoreKey = "urgencyScore" | "helplessnessScore" | "overloadCueScore" | "taskPressureScore" | "supportSeekingScore";
-interface Rule { code: string; phrases: string[]; scores: Partial<Record<ScoreKey, number>>; polarity?: number }
+type ScoreKey = "urgencyScore" | "helplessnessScore" | "overloadCueScore" | "taskPressureScore" | "supportSeekingScore" | "expressionClarityScore" | "progressReadinessScore";
+interface Rule { code: string; phrases: string[]; scores: Partial<Record<ScoreKey, number>>; minScores?: Partial<Record<ScoreKey, number>>; polarity?: number }
 
 const rules: Rule[] = [
   { code: "NEGATIVE_DISTRESS", phrases: ["难受", "糟糕", "崩溃", "焦虑", "烦", "绝望", "撑不住"], scores: { helplessnessScore: 0.6 }, polarity: -0.7 },
@@ -12,7 +12,11 @@ const rules: Rule[] = [
   { code: "OVERLOAD_PILE", phrases: ["事情堆在一起", "任务全堆", "太多", "做不完", "堆着"], scores: { overloadCueScore: 0.85, taskPressureScore: 0.8 } },
   { code: "TASK_CONTEXT", phrases: ["工作", "项目", "任务", "截止", "作业", "待办", "汇报"], scores: { taskPressureScore: 0.7 } },
   { code: "SUPPORT_REQUEST", phrases: ["陪我", "听我", "想说", "聊聊", "帮帮我"], scores: { supportSeekingScore: 0.85 } },
-  { code: "RECOVERY_CLARITY", phrases: ["理清楚一点", "清楚多了", "没那么乱了"], scores: { overloadCueScore: 0.15, helplessnessScore: 0.15 }, polarity: 0.35 },
+  { code: "RECOVERY_CLARITY", phrases: ["理清楚一点", "清楚多了", "没那么乱了"], scores: {}, minScores: { overloadCueScore: 0.15, helplessnessScore: 0.15 }, polarity: 0.35 },
+  { code: "LOW_EXPRESSION_CLARITY", phrases: ["不知道说什么", "脑子空", "脑子是空", "一片空白", "说不上来", "不知道怎么说", "没接上电", "卡住了", "就是很乱"], scores: { overloadCueScore: 0.65 }, minScores: { expressionClarityScore: 0.2, progressReadinessScore: 0.25 } },
+  { code: "TENTATIVE_PROGRESS", phrases: ["也许可以", "可能可以", "要不试试", "如果只是", "也行"], scores: { progressReadinessScore: 0.55 } },
+  { code: "DIRECT_PROGRESS", phrases: ["直接给我", "只给我一个", "帮我拆", "下一步", "开始做"], scores: { progressReadinessScore: 0.9 } },
+  { code: "DECLINE_PROGRESS", phrases: ["不想整理", "先不弄", "别给建议", "不要问", "先别问"], scores: {}, minScores: { progressReadinessScore: 0.05 } },
 ];
 
 const negations = ["并不", "并没有", "没有", "没", "不", "并非"];
@@ -32,17 +36,19 @@ function matchRule(text: string, rule: Rule): { phrase: string; factor: number }
 export function extractFallbackSignals(text: string): RawSignals {
   const scores: Record<ScoreKey, number> = {
     urgencyScore: 0.2, helplessnessScore: 0.15, overloadCueScore: 0.2, taskPressureScore: 0.15, supportSeekingScore: 0.4,
+    expressionClarityScore: 0.65, progressReadinessScore: 0.25,
   };
   let sentimentPolarity = 0;
   const evidenceSpans: string[] = [];
-  const ruleCodes: string[] = [];
+  const ruleCodes: string[] = ["DETERMINISTIC_SIGNAL_PRIOR"];
   for (const rule of rules) {
     const match = matchRule(text, rule);
     if (!match) continue;
     ruleCodes.push(rule.code);
     evidenceSpans.push(`[${rule.code}] ${match.phrase}`);
     for (const [key, value] of Object.entries(rule.scores) as Array<[ScoreKey, number]>) scores[key] = Math.max(scores[key], Math.min(1, value * match.factor));
+    for (const [key, value] of Object.entries(rule.minScores ?? {}) as Array<[ScoreKey, number]>) scores[key] = Math.min(scores[key], Math.max(0, value));
     if (rule.polarity !== undefined) sentimentPolarity = Math.max(-1, Math.min(1, rule.polarity * match.factor));
   }
-  return { sentimentPolarity, ...scores, evidenceSpans: evidenceSpans.slice(0, 5), confidence: ruleCodes.length ? 0.55 : 0.25, modelRiskHint: "low", ruleCodes };
+  return { sentimentPolarity, ...scores, evidenceSpans: evidenceSpans.slice(0, 5), confidence: ruleCodes.length > 1 ? 0.55 : 0.25, modelRiskHint: "low", ruleCodes };
 }

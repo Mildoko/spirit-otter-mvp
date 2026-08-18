@@ -11,6 +11,7 @@ import { addDays } from "../utils.js";
 import type { SupportOrchestrator } from "../modules/support/orchestrator.js";
 import { buildPublicEmotionFeedback } from "../modules/support/emotion-feedback.js";
 import { emotionStateSchema } from "../modules/support/schemas.js";
+import { parseGuidanceState } from "../modules/support/guidance-state.js";
 import { markMemoriesRecalled, persistMemoryCandidates, recallMemories } from "../modules/memory/repository.js";
 
 const turnSchema = z.object({
@@ -43,6 +44,11 @@ function snapshotState(snapshot: {
     stressLoad: snapshot.stressLoad,
     cognitiveOverload: snapshot.cognitiveOverload,
     supportNeed: snapshot.supportNeed,
+    control: 0.5,
+    emotionStatus: "unknown",
+    emotionLabels: [],
+    emotionSubject: "unknown",
+    emotionSchemaVersion: 1,
     confidence: snapshot.confidence,
     evidenceSpans: Array.isArray(snapshot.evidenceJson)
       ? snapshot.evidenceJson.filter((item): item is string => typeof item === "string")
@@ -144,6 +150,7 @@ export function registerChatRoutes(
           ...(action ? { action: action.text } : {}),
           ...(followup ? { followup: `关于“${followup.action.text}”的回访，计划时间 ${followup.dueAt.toISOString()}` } : {}),
         },
+        guidanceState: parseGuidanceState(conversation.guidanceStateJson),
       });
 
       const response = await db.$transaction(async (tx): Promise<ChatTurnResponse> => {
@@ -179,6 +186,17 @@ export function registerChatRoutes(
             riskLevel: result.riskLevel,
             primaryStrategy: result.plan.primaryStrategy,
             planJson: JSON.parse(JSON.stringify(result.plan)) as Prisma.InputJsonValue,
+            signalFeaturesJson: JSON.parse(JSON.stringify({
+              expressionClarityScore: result.signals.expressionClarityScore,
+              progressReadinessScore: result.signals.progressReadinessScore,
+              confidence: result.signals.confidence,
+              evidenceSpans: result.signals.evidenceSpans,
+              ruleCodes: result.signals.ruleCodes ?? [],
+              ...(env.EMOTION_INFERENCE_V2 ? { emotionInference: result.emotionHypothesis } : {}),
+            })) as Prisma.InputJsonValue,
+            ...(result.responseStyleDiagnostics ? {
+              responseStyleJson: JSON.parse(JSON.stringify(result.responseStyleDiagnostics)) as Prisma.InputJsonValue,
+            } : {}),
             promptVersion: PROMPT_VERSION,
             policyVersion: POLICY_VERSION,
             characterVersion: result.characterVersion,
@@ -252,6 +270,7 @@ export function registerChatRoutes(
             activeSpirit: result.plan.activeSpirit,
             spiritTurnCount: result.nextSpiritTurnCount,
             companionLockTurns: result.nextCompanionLockTurns,
+            guidanceStateJson: JSON.parse(JSON.stringify(result.nextGuidanceState)) as Prisma.InputJsonValue,
           },
         });
         await logBehavior(tx, auth.userId, "turn_completed", {

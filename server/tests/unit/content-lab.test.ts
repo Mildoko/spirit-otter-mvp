@@ -34,6 +34,7 @@ describe("local content acceptance lab", () => {
     expect(response.json().plan.sceneState).toBe("safety_plain");
     expect(response.json().actionDraft).toBeNull();
     expect(response.json().source).toBe("local_fallback");
+    expect(response.json()).not.toHaveProperty("characterDiagnostics");
   });
 
   it("cannot be enabled in production", () => {

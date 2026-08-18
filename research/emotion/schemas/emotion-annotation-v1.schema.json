@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "emotion-annotation-v1",
+  "type": "object",
+  "required": ["id", "schemaVersion", "scenario", "context", "userText", "annotation", "phenomena", "sourceType", "split", "annotationStatus"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": "emotion-annotation-v1" },
+    "scenario": { "type": "string", "minLength": 1 },
+    "groupId": { "type": "string" },
+    "turnIndex": { "type": "integer", "minimum": 0 },
+    "context": { "type": "array", "maxItems": 12, "items": { "type": "object", "required": ["role", "text"], "properties": { "role": { "enum": ["user", "assistant"] }, "text": { "type": "string" } }, "additionalProperties": false } },
+    "userText": { "type": "string", "minLength": 1 },
+    "annotation": {
+      "type": "object",
+      "required": ["emotions", "valenceLevel", "arousalLevel", "controlLevel", "clarityLevel", "neutral", "unknown", "explicitSelfReport", "emotionSubject"],
+      "additionalProperties": false,
+      "properties": {
+        "emotions": { "type": "array", "maxItems": 2, "items": { "type": "object", "required": ["label", "intensityLevel", "confidenceLevel", "evidenceSpans"], "properties": { "label": { "enum": ["joy", "relief", "hope", "interest", "gratitude", "sadness", "anger", "anxiety", "frustration", "disappointment", "disgust", "shame", "guilt", "loneliness", "surprise"] }, "intensityLevel": { "type": "integer", "minimum": 1, "maximum": 5 }, "confidenceLevel": { "type": "integer", "minimum": 1, "maximum": 5 }, "evidenceSpans": { "type": "array", "minItems": 1, "maxItems": 5, "items": { "type": "string", "minLength": 1 } } }, "additionalProperties": false } },
+        "valenceLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "arousalLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "controlLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "clarityLevel": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "neutral": { "type": "boolean" },
+        "unknown": { "type": "boolean" },
+        "explicitSelfReport": { "type": "boolean" },
+        "emotionSubject": { "enum": ["user", "other", "mixed", "unknown"] }
+      }
+    },
+    "phenomena": { "type": "array", "items": { "type": "string" } },
+    "sourceType": { "enum": ["human_authored", "synthetic_candidate", "consented_deidentified"] },
+    "split": { "enum": ["dev", "validation", "test"] },
+    "annotationStatus": { "enum": ["candidate", "single_reviewed", "double_reviewed", "adjudicated"] }
+  }
+}

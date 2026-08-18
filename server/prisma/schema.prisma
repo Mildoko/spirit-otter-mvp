@@ -121,6 +121,7 @@ model Conversation {
   spiritTurnCount    Int             @default(0)
   companionLockTurns Int             @default(0)
   processingTurnId   String?         @unique
+  guidanceStateJson  Json?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   user               AnonymousUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -215,6 +216,8 @@ model SupportEvent {
   riskLevel        String
   primaryStrategy  String
   planJson         Json
+  signalFeaturesJson Json?
+  responseStyleJson Json?
   promptVersion    String
   policyVersion    String
   characterVersion String

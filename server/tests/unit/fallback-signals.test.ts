@@ -20,4 +20,17 @@ describe("auditable fallback signals", () => {
     expect(result.overloadCueScore).toBeLessThan(0.3);
     expect(result.sentimentPolarity).toBeGreaterThan(0);
   });
+
+  it.each(["不知道说什么", "脑子空了", "这会儿没接上电"])("detects low expression clarity with evidence: %s", (text) => {
+    const result = extractFallbackSignals(text);
+    expect(result.expressionClarityScore).toBeLessThan(0.45);
+    expect(result.ruleCodes).toContain("LOW_EXPRESSION_CLARITY");
+    expect(result.evidenceSpans.join(" ")).toMatch(/不知道说什么|脑子空|没接上电/u);
+  });
+
+  it("separates tentative, direct, and declined readiness", () => {
+    expect(extractFallbackSignals("如果只是理小一点也行").progressReadinessScore).toBeGreaterThanOrEqual(0.45);
+    expect(extractFallbackSignals("直接给我一个动作").progressReadinessScore).toBeGreaterThanOrEqual(0.7);
+    expect(extractFallbackSignals("先不弄了").progressReadinessScore).toBeLessThan(0.45);
+  });
 });

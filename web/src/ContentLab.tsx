@@ -81,6 +81,11 @@ export function ContentLab() {
               <div><span>来源</span><strong>{result.source === "cloud_model" ? "云端模型" : "本地降级"}</strong></div>
             </div>
             <article className="lab-reply"><span>最终用户回复</span><p>{result.reply}</p></article>
+            {result.emotionInterpretation && <section className="lab-style" aria-label="情绪推测诊断">
+              <h3>水獭的猜测</h3>
+              <p>状态：{result.emotionInterpretation.status} · 标签：{result.emotionInterpretation.labels.map((item) => `${item.displayName}/${item.intensityLevel}`).join("、") || "无"}</p>
+              <p>{result.emotionInterpretation.disclaimer}</p>
+            </section>}
             {result.emotionFeedback && result.emotionFeedback.cues.length > 0 && <section className="lab-emotion-preview" aria-label={result.emotionFeedback.disclaimer}>
               <span>正式界面的即时飘字预览</span>
               <div>{result.emotionFeedback.cues.map((cue) => <em key={cue.dimension} className={`emotion-${cue.tone}`}>{cue.text}</em>)}</div>
@@ -88,6 +93,24 @@ export function ContentLab() {
             </section>}
             {(result.riskLevel === "high" || result.riskLevel === "imminent") && <p className="lab-emotion-suppressed">高风险状态：飘字已关闭，只保留直接安全支持。</p>}
             {result.actionDraft && <article className="lab-action"><span>行动草稿</span><p>{result.actionDraft}</p></article>}
+            {result.characterDiagnostics?.responseStyle && <section className="lab-style" aria-label="回应风格诊断">
+              <h3>回应风格</h3>
+              <div className="lab-summary">
+                <div><span>节奏</span><strong>{result.characterDiagnostics.responseStyle.profile.pace}</strong></div>
+                <div><span>篇幅</span><strong>{result.characterDiagnostics.responseStyle.profile.responseLength}</strong></div>
+                <div><span>温度</span><strong>{result.characterDiagnostics.responseStyle.profile.warmth}</strong></div>
+                <div><span>映照</span><strong>{result.characterDiagnostics.responseStyle.profile.reflectionDepth}</strong></div>
+                <div><span>问题额度</span><strong>{result.characterDiagnostics.responseStyle.profile.questionBudget}</strong></div>
+                <div><span>建议</span><strong>{result.characterDiagnostics.responseStyle.profile.adviceDirectness}</strong></div>
+                <div><span>口语度</span><strong>{result.characterDiagnostics.responseStyle.profile.conversationality}</strong></div>
+                <div><span>句式</span><strong>{result.characterDiagnostics.responseStyle.profile.sentenceRhythm}</strong></div>
+                <div><span>表达亮点</span><strong>{result.characterDiagnostics.responseStyle.profile.expressiveAccent}</strong></div>
+                <div><span>生成状态</span><strong>{result.characterDiagnostics.responseStyle.validationStatus}</strong></div>
+              </div>
+              <p>原因：{result.characterDiagnostics.responseStyle.reasonCodes.join("、")}</p>
+              <p>避免：{result.characterDiagnostics.responseStyle.avoidedPatterns.join("、") || "无"}</p>
+              <p>校验：{result.characterDiagnostics.responseStyle.violationCodes.join("、") || "通过"} · 版本 {result.characterDiagnostics.responseStyle.styleVersion}</p>
+            </section>}
             <div className="lab-policy"><div><h3>允许</h3><ul>{result.plan.allowedContent.map((item) => <li key={item}>{item}</li>)}</ul></div><div><h3>禁止</h3><ul>{result.plan.forbiddenContent.map((item) => <li key={item}>{item}</li>)}</ul></div></div>
             <details><summary>内部状态与原始 JSON</summary><pre>{JSON.stringify(result, null, 2)}</pre></details>
             <button className="lab-copy" onClick={() => void navigator.clipboard.writeText(JSON.stringify({ input: requestBody, output: result }, null, 2))}>复制完整结果</button>
