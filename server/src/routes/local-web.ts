@@ -7,6 +7,7 @@ import { z } from "zod";
 const webDist = resolve(dirname(fileURLToPath(import.meta.url)), "../../../web/dist");
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".png": "image/png", ".webp": "image/webp",
+  ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".wav": "audio/wav",
 };
 
 export function registerLocalWebRoutes(app: FastifyInstance): void {

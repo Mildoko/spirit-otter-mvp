@@ -12,6 +12,38 @@ export type TurnStatus = "reserved" | "processing" | "completed" | "failed";
 export type ActionStatus = "draft" | "confirmed" | "completed" | "deferred" | "deleted";
 export type RuntimeMode = "full" | "demo" | "lab";
 export type ResponseSource = "cloud_model" | "local_fallback" | "static_safety";
+export type AgentIdV1 = "spirit_otter";
+export type AudioSfxV1 = "reply_ripple" | "invite_chime" | "none";
+export type SoundscapePolicyV1 = "normal" | "reduced" | "silent";
+
+export interface AudioCueV1 {
+  schemaVersion: 1;
+  agentId: AgentIdV1;
+  voiceProfileId: string;
+  sfx: AudioSfxV1;
+  soundscapePolicy: SoundscapePolicyV1;
+}
+
+export type VisualActionV1 =
+  | "idle"
+  | "notice"
+  | "approach"
+  | "listen"
+  | "think"
+  | "speak"
+  | "invite"
+  | "withdraw"
+  | "safety_still";
+
+export interface VisualCueV1 {
+  schemaVersion: 1;
+  agentId: string;
+  action: VisualActionV1;
+  intensity: 1 | 2 | 3;
+  durationMs: number;
+  ripple: "none" | "soft" | "clear";
+  glow: "dim" | "normal" | "warm";
+}
 export type ResponsePace = "very_slow" | "slow" | "steady" | "direct";
 export type ResponseSentenceLength = "short" | "medium";
 export type ResponseLength = "brief" | "normal";
@@ -267,6 +299,8 @@ export interface RuntimeInfo {
   modelSource: "cloud_model" | "local_fallback";
   buildVersion: string;
   emotionDiagnosticsAvailable: boolean;
+  sceneWorldV1Enabled: boolean;
+  audioV1Enabled: boolean;
 }
 
 export interface PublicEmotionFeedback {
@@ -286,4 +320,6 @@ export interface ChatTurnResponse {
   emotionDiagnostics?: EmotionDiagnostics;
   emotionInterpretation?: PublicEmotionInterpretation;
   characterDiagnostics?: CharacterDiagnostics;
+  visualCue?: VisualCueV1;
+  audioCue?: AudioCueV1;
 }

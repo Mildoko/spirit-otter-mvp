@@ -20,6 +20,19 @@ describe("runtime mode environment", () => {
     expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "lab", EMOTION_INFERENCE_V2: "false" }).EMOTION_INFERENCE_V2).toBe(false);
   });
 
+  it("keeps scene world off in full and on in demo/lab unless explicitly overridden", () => {
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "full" }).SCENE_WORLD_V1).toBe(false);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "demo" }).SCENE_WORLD_V1).toBe(true);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "lab", SCENE_WORLD_V1: "false" }).SCENE_WORLD_V1).toBe(false);
+  });
+
+  it("keeps audio off in full/lab and on in demo unless explicitly overridden", () => {
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "full" }).AUDIO_V1).toBe(false);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "demo" }).AUDIO_V1).toBe(true);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "lab" }).AUDIO_V1).toBe(false);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "demo", AUDIO_V1: "false" }).AUDIO_V1).toBe(false);
+  });
+
   it("maps legacy local test mode to lab", () => {
     expect(loadEnv({ ...base, LOCAL_TEST_MODE: "true" }).OTTER_RUNTIME_MODE).toBe("lab");
   });

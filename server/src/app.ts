@@ -21,6 +21,7 @@ import { registerRuntimeRoute } from "./routes/runtime.js";
 import { registerDemoRoutes } from "./routes/demo.js";
 import { DemoStore } from "./demo/store.js";
 import { validateCharacterRegistry } from "./modules/character/schemas.js";
+import { validateServerVoiceProfileRegistry } from "./modules/support/audio-cue.js";
 
 export interface AppDependencies {
   orchestrator?: Pick<SupportOrchestrator, "run">;
@@ -29,6 +30,7 @@ export interface AppDependencies {
 
 export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependencies: AppDependencies = {}): Promise<FastifyInstance> {
   validateCharacterRegistry();
+  validateServerVoiceProfileRegistry();
   const app = Fastify({
     logger: {
       level: env.NODE_ENV === "test" ? "silent" : "info",

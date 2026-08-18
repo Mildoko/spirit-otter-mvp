@@ -24,6 +24,9 @@ describe("demo mode API contract", () => {
     const blended = await app.inject({ method: "POST", url: "/api/chat/turn", payload: { conversationId, text: "请帮我整理事情。" } });
     expect(blended.statusCode).toBe(200);
     expect(blended.json().responseSource).toBe("local_fallback");
+    expect(blended.json().audioCue).toMatchObject({
+      schemaVersion: 1, agentId: "spirit_otter", voiceProfileId: "spirit_otter.shore_pick", soundscapePolicy: "normal",
+    });
     expect(blended.json().emotionDiagnostics).toBeTruthy();
     expect(blended.json().emotionInterpretation).toMatchObject({ status: expect.any(String), canCorrect: true });
     expect(blended.json().characterDiagnostics.activeSpirit).toBe("shore_pick");
@@ -66,7 +69,7 @@ describe("demo mode API contract", () => {
 
   it("exposes safe runtime metadata", async () => {
     expect((await app.inject({ method: "GET", url: "/api/runtime" })).json()).toEqual({
-      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: true,
+      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: true, sceneWorldV1Enabled: true, audioV1Enabled: true,
     });
   });
 

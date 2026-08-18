@@ -29,11 +29,12 @@ const env = {
   E2E_BASE_URL: baseURL,
 };
 
-function runNpm(args) {
+function runNpm(args, overrides = {}) {
+  const commandEnv = { ...env, ...overrides };
   const npmCli = process.env.npm_execpath;
   const result = npmCli
-    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: root, env, stdio: "inherit" })
-    : spawnSync("npm", args, { cwd: root, env, stdio: "inherit", shell: process.platform === "win32" });
+    ? spawnSync(process.execPath, [npmCli, ...args], { cwd: root, env: commandEnv, stdio: "inherit" })
+    : spawnSync("npm", args, { cwd: root, env: commandEnv, stdio: "inherit", shell: process.platform === "win32" });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -66,7 +67,7 @@ function createInvite() {
   return invite;
 }
 
-runNpm(["run", "build"]);
+runNpm(["run", "build"], { NODE_ENV: "production" });
 
 const serverOutput = [];
 const server = spawn(process.execPath, ["server/dist/server.js"], { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });

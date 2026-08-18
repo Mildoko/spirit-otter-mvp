@@ -3,6 +3,8 @@ import type { FastifyInstance } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { ChatTurnResponse, EmotionState, PublicActionItem } from "@otter/shared";
+import { buildVisualCue } from "../modules/support/visual-cue.js";
+import { buildAudioCue } from "../modules/support/audio-cue.js";
 import type { AppEnv } from "../config/env.js";
 import { POLICY_VERSION, PROMPT_VERSION, RECORD_DAYS } from "../config/constants.js";
 import { requireAuth } from "../services/session-service.js";
@@ -245,6 +247,8 @@ export function registerChatRoutes(
           ...(createdAction ? { action: publicAction(createdAction) } : {}),
           safety: isSafety ? "direct_support" : "normal",
           responseSource: result.responseSource,
+          visualCue: buildVisualCue({ riskLevel: result.riskLevel, plan: result.plan, hasActionDraft: Boolean(result.actionDraft) }),
+          ...(env.AUDIO_V1 ? { audioCue: buildAudioCue({ riskLevel: result.riskLevel, activeSpirit: result.plan.activeSpirit, hasActionDraft: Boolean(result.actionDraft) }) } : {}),
           ...(isSafety ? {} : { emotionFeedback: buildPublicEmotionFeedback(result.state, previousSmoothedState) }),
         };
         const latencyMs = result.metrics.reduce((sum, metric) => sum + metric.latencyMs, 0);

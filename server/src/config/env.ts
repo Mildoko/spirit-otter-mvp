@@ -36,6 +36,8 @@ const envSchema = z.object({
   OTTER_RUNTIME_MODE: z.enum(["full", "demo", "lab"]).default("full"),
   EXPRESSION_STYLE_V2: booleanFromStringDefaultFalse,
   EMOTION_INFERENCE_V2: booleanFromStringDefaultFalse,
+  SCENE_WORLD_V1: booleanFromStringDefaultFalse,
+  AUDIO_V1: booleanFromStringDefaultFalse,
   BUILD_VERSION: z.string().min(1).default("auto"),
 });
 
@@ -51,6 +53,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   }
   if (normalized.EMOTION_INFERENCE_V2 === undefined) {
     normalized.EMOTION_INFERENCE_V2 = normalized.OTTER_RUNTIME_MODE === "full" || normalized.OTTER_RUNTIME_MODE === undefined ? "false" : "true";
+  }
+  if (normalized.SCENE_WORLD_V1 === undefined) {
+    normalized.SCENE_WORLD_V1 = normalized.OTTER_RUNTIME_MODE === "full" || normalized.OTTER_RUNTIME_MODE === undefined ? "false" : "true";
+  }
+  if (normalized.AUDIO_V1 === undefined) {
+    normalized.AUDIO_V1 = normalized.OTTER_RUNTIME_MODE === "demo" ? "true" : "false";
   }
   const result = envSchema.safeParse(normalized);
   if (!result.success) {

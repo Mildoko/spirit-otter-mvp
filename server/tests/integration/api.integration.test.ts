@@ -35,6 +35,7 @@ integration("Postgres API integration", () => {
       LLM_API_KEY: "",
       LOCAL_TEST_MODE: "false",
       OTTER_RUNTIME_MODE: "full",
+      AUDIO_V1: "true",
     });
     db = new PrismaClient({ datasourceUrl: testDatabaseUrl });
     const { buildApp } = await import("../../src/app.js");
@@ -102,10 +103,13 @@ integration("Postgres API integration", () => {
     const first = await app.inject(request);
     const repeated = await app.inject(request);
     expect(first.statusCode).toBe(200);
+    expect(first.json().audioCue).toMatchObject({ schemaVersion: 1, agentId: "spirit_otter" });
     expect(repeated.statusCode).toBe(200);
     expect(repeated.json().turnId).toBe(first.json().turnId);
     expect(await db.turn.count()).toBe(1);
     expect(await db.message.count()).toBe(2);
+    const storedTurn = await db.turn.findFirstOrThrow();
+    expect(storedTurn.resultJson).toMatchObject({ audioCue: { schemaVersion: 1, agentId: "spirit_otter" } });
     const conversation = await db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
     expect((conversation.guidanceStateJson as { turnIndex?: number } | null)?.turnIndex).toBe(1);
     const supportEvent = await db.supportEvent.findFirstOrThrow();

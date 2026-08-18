@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ChatTurnResponse, EmotionDiagnostics, EmotionState, PublicFollowup } from "@otter/shared";
+import { buildVisualCue } from "../modules/support/visual-cue.js";
+import { buildAudioCue } from "../modules/support/audio-cue.js";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import type { DemoStore } from "../demo/store.js";
@@ -133,6 +135,8 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
       ...(action ? { action } : {}),
       safety: isSafety ? "direct_support" : "normal",
       responseSource: result.responseSource,
+      visualCue: buildVisualCue({ riskLevel: result.riskLevel, plan: result.plan, hasActionDraft: Boolean(result.actionDraft) }),
+      ...(env.AUDIO_V1 ? { audioCue: buildAudioCue({ riskLevel: result.riskLevel, activeSpirit: result.plan.activeSpirit, hasActionDraft: Boolean(result.actionDraft) }) } : {}),
       ...(isSafety ? {} : {
         emotionFeedback: buildPublicEmotionFeedback(result.state, previous),
         emotionDiagnostics: diagnostics,

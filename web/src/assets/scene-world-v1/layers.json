@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "referenceSize": { "width": 1672, "height": 941 },
+  "source": "source-concept.png",
+  "layers": [
+    {
+      "id": "background",
+      "file": "background-clean-v1.png",
+      "zIndex": 0,
+      "blendMode": "normal",
+      "alpha": false,
+      "status": "prototype-ready"
+    },
+    {
+      "id": "skySpirits",
+      "file": "layer-sky-spirits-v1.png",
+      "zIndex": 10,
+      "blendMode": "screen",
+      "alpha": false,
+      "status": "needs-matte-cleanup",
+      "note": "Generated extraction contains a baked checkerboard matte."
+    },
+    {
+      "id": "deer",
+      "file": "layer-deer-screen-v1.png",
+      "zIndex": 20,
+      "blendMode": "screen",
+      "alpha": false,
+      "status": "prototype-only",
+      "note": "Black-backed luminous layer; use screen/additive blending."
+    },
+    {
+      "id": "boatUser",
+      "file": "layer-boat-user-v1.png",
+      "zIndex": 30,
+      "blendMode": "normal",
+      "alpha": false,
+      "status": "needs-matte-cleanup",
+      "note": "Generated extraction contains a baked checkerboard matte."
+    },
+    {
+      "id": "otter",
+      "file": "layer-otter-v1.png",
+      "zIndex": 40,
+      "blendMode": "normal",
+      "alpha": true,
+      "status": "prototype-ready",
+      "anchor": { "x": 0.5, "y": 0.5 },
+      "interaction": true
+    },
+    {
+      "id": "ripples",
+      "file": "layer-ripples-v1.png",
+      "zIndex": 50,
+      "blendMode": "add",
+      "alpha": true,
+      "status": "prototype-only",
+      "note": "Use as visual reference; procedural ripples are preferred in runtime."
+    }
+  ]
+}

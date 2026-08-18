@@ -16,7 +16,7 @@ test("首次进入、自动整理、刷新恢复、邀请码不可复用、安�
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.getByText("愿意，只整理一件", { exact: true })).toHaveCount(0);
 
-  await page.locator(".composer textarea").fill("先把明天汇报的标题写出来。");
+  await page.locator(".composer textarea").fill("先写明天汇报的标题。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.getByText("捞起的一件事")).toBeVisible();
   await page.getByRole("button", { name: "确认这一小步" }).click();

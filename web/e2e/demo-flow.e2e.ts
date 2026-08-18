@@ -1,12 +1,57 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 test.skip(process.env.E2E_MODE !== "demo", "仅在 E2E_MODE=demo 时运行");
+
+async function installAudioStubs(page: Page) {
+  await page.addInitScript(() => {
+    type AudioEvent = { type: string; text?: string; rate?: number; pitch?: number; src?: string };
+    const stored = window.sessionStorage.getItem("otter-e2e-audio-events");
+    const events: AudioEvent[] = stored ? JSON.parse(stored) : [];
+    const record = (event: AudioEvent) => {
+      events.push(event);
+      window.sessionStorage.setItem("otter-e2e-audio-events", JSON.stringify(events));
+    };
+    Object.defineProperty(window, "__otterAudioEvents", { configurable: true, value: events });
+    class FakeUtterance {
+      text: string;
+      lang = "";
+      rate = 1;
+      pitch = 1;
+      volume = 1;
+      voice: SpeechSynthesisVoice | null = null;
+      onstart: ((event: SpeechSynthesisEvent) => void) | null = null;
+      onend: ((event: SpeechSynthesisEvent) => void) | null = null;
+      onerror: ((event: SpeechSynthesisErrorEvent) => void) | null = null;
+      constructor(text: string) { this.text = text; }
+    }
+    const voice = { name: "Microsoft Xiaoxiao", lang: "zh-CN", localService: true, default: true, voiceURI: "e2e-zh" } as SpeechSynthesisVoice;
+    const synthesis = {
+      getVoices: () => [voice],
+      speak: (utterance: FakeUtterance) => {
+        record({ type: "speak", text: utterance.text, rate: utterance.rate, pitch: utterance.pitch });
+        queueMicrotask(() => utterance.onstart?.({} as SpeechSynthesisEvent));
+      },
+      cancel: () => record({ type: "cancel" }),
+      pause() {}, resume() {}, pending: false, speaking: false, paused: false,
+      addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true,
+      onvoiceschanged: null,
+    } as unknown as SpeechSynthesis;
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { configurable: true, value: FakeUtterance });
+    Object.defineProperty(window, "speechSynthesis", { configurable: true, value: synthesis });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: function () { record({ type: "media-play", src: (this as HTMLMediaElement).currentSrc || (this as HTMLMediaElement).src }); return Promise.resolve(); },
+    });
+  });
+}
 
 test("演示模式完成深汐、自动混合、拾岸、行动和安全退场", async ({ page }) => {
   await page.request.delete("/api/me/data");
   await page.goto("/");
   await expect(page.getByText("本地演示，不保存数据")).toBeVisible();
-  await expect(page.getByRole("img", { name: /灵体水獭/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "灵体水面世界" })).toBeVisible();
+  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
+  await expect(page.getByRole("region", { name: "与灵体水獭的对话" })).toBeVisible();
 
   await page.locator(".composer textarea").fill("事情都堆在一起，我不知道先做哪个，想先说说。");
   await page.getByRole("button", { name: "发送消息" }).click();
@@ -38,6 +83,7 @@ test("演示模式完成深汐、自动混合、拾岸、行动和安全退场",
 
 test("情绪推测可纠正并在同一浏览器刷新后恢复", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
   await page.locator(".composer textarea").fill("我很生气。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("愤怒");
@@ -47,5 +93,57 @@ test("情绪推测可纠正并在同一浏览器刷新后恢复", async ({ page 
   await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("已按你的纠正");
   await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("失望");
   await page.reload();
+  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
   await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("失望");
+});
+
+test("场景可切换星空、收起对话并恢复", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "仰望星空" }).click();
+  await expect(page.getByRole("button", { name: "返回水面" })).toBeVisible();
+  await page.getByRole("button", { name: "返回水面" }).click();
+  const otterButton = page.getByRole("button", { name: "靠近灵体水獭并打开对话" });
+  await otterButton.focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "收起对话" }).click();
+  await expect(page.getByRole("region", { name: "与灵体水獭的对话" })).toHaveCount(0);
+  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
+  await expect(page.getByRole("region", { name: "与灵体水獭的对话" })).toBeVisible();
+});
+
+test("声音需明确开启，新回复朗读一次，刷新不重播并支持分项控制", async ({ page }) => {
+  await installAudioStubs(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
+  const enableSound = page.getByRole("button", { name: "开启声音" });
+  await expect(enableSound).toBeVisible();
+  await enableSound.click();
+  await expect(page.getByRole("button", { name: "静音" })).toBeVisible();
+
+  await page.locator(".composer textarea").fill("今天有点累，想先说说。");
+  await page.getByRole("button", { name: "发送消息" }).click();
+  await expect(page.locator(".message-assistant").last()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ((window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents ?? []).filter((event) => event.type === "speak").length)).toBe(1);
+  const spoken = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; rate?: number }> }).__otterAudioEvents.find((event) => event.type === "speak"));
+  expect(spoken?.rate).toBe(0.92);
+
+  await page.getByRole("button", { name: "重播这条水獭回复" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(2);
+
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("checkbox", { name: "场景背景音乐" }).uncheck();
+  await expect(page.getByRole("checkbox", { name: "场景背景音乐" })).not.toBeChecked();
+  await page.getByRole("button", { name: "关闭设置" }).click();
+  await page.reload();
+  const countAfterReload = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length);
+  expect(countAfterReload).toBe(2);
+
+  await page.getByRole("button", { name: "开启声音" }).click();
+  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
+  await page.locator(".composer textarea").fill("我马上要从楼顶跳下去。");
+  await page.getByRole("button", { name: "发送消息" }).click();
+  await expect(page.getByRole("button", { name: "请现场研究人员过来" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(3);
+  const safetySpeech = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; rate?: number }> }).__otterAudioEvents.filter((event) => event.type === "speak").at(-1));
+  expect(safetySpeech?.rate).toBe(0.95);
 });

@@ -8,6 +8,7 @@ const env = {
   SERVER_PORT: "3101",
   WEB_ORIGIN: "http://localhost:3101",
   LLM_API_KEY: "",
+  LOCAL_TEST_MODE: "true",
 };
 const result = npmCli
   ? spawnSync(process.execPath, [npmCli, "run", "test:e2e"], { stdio: "inherit", env })

@@ -11,5 +11,7 @@ export function registerRuntimeRoute(app: FastifyInstance, env: AppEnv, gateway:
     modelSource: gateway.isConfigured ? "cloud_model" : "local_fallback",
     buildVersion: resolveBuildVersion(env.BUILD_VERSION),
     emotionDiagnosticsAvailable: env.OTTER_RUNTIME_MODE !== "full",
+    sceneWorldV1Enabled: env.SCENE_WORLD_V1,
+    audioV1Enabled: env.AUDIO_V1,
   }));
 }
