@@ -3,6 +3,7 @@ import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { VisualActionV1 } from "@otter/shared";
 import ripplesUrl from "../assets/scene-world-v1/layer-ripples-v1.png";
 import fallbackUrl from "../assets/scene-world-v1/source-concept.png";
+import type { TataExpressionCueV1 } from "../lib/otter-expression";
 
 export type WorldView = "horizon" | "sky";
 export type RendererState = "loading" | "ready" | "fallback" | "context_lost";
@@ -15,6 +16,10 @@ interface SceneWorldProps {
   onOtterActivate: () => void;
   onRendererState?: (state: RendererState) => void;
   showDiagnostics?: boolean;
+  expressionCue: TataExpressionCueV1;
+  welcomeText?: string;
+  welcomeTimeLabel?: string;
+  dialogOpen?: boolean;
 }
 
 const designWidth = 1672;
@@ -36,7 +41,7 @@ function chooseQuality(reducedMotion: boolean): SceneQuality {
   return "high";
 }
 
-export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRendererState, showDiagnostics = false }: SceneWorldProps) {
+export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRendererState, showDiagnostics = false, expressionCue, welcomeText, welcomeTimeLabel, dialogOpen = false }: SceneWorldProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef(action);
   const viewRef = useRef(view);
@@ -206,8 +211,10 @@ export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRend
 
   return <section className={`scene-world quality-${quality} view-${view}`} aria-label="灵体水面世界">
     <div ref={hostRef} className="scene-world-host" aria-hidden="true" />
-    {(rendererState === "fallback" || rendererState === "context_lost") && <img className="scene-world-fallback" src={fallbackUrl} alt="星空下的小船、水獭与灵体水面" />}
-    <button className="scene-otter-access" onFocus={() => { if (action === "idle") activateRef.current = onOtterActivate; }} onClick={onOtterActivate} aria-label="靠近灵体水獭并打开对话">与水獭说话</button>
+    {(rendererState === "fallback" || rendererState === "context_lost") && <img className="scene-world-fallback" src={fallbackUrl} alt="星空下的小船、tata 与灵体水面" />}
+    {!dialogOpen && <button className="scene-otter-access" onFocus={() => { if (action === "idle") activateRef.current = onOtterActivate; }} onClick={onOtterActivate} aria-label="靠近 tata 并打开对话">与 tata 说话</button>}
+    <div className={`tata-expression tata-expression-${expressionCue.expression}`} role="img" aria-label={expressionCue.label}><span aria-hidden="true">{expressionCue.symbol}</span></div>
+    {welcomeText && <aside className="tata-welcome-bubble" role="status"><strong>tata</strong><p>{welcomeText}</p>{welcomeTimeLabel && <small>{welcomeTimeLabel}</small>}</aside>}
     <button className="scene-view-toggle" onClick={() => onViewChange(view === "horizon" ? "sky" : "horizon")} disabled={rendererState === "loading"}>
       {view === "horizon" ? "仰望星空" : "返回水面"}
     </button>

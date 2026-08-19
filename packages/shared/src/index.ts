@@ -301,6 +301,7 @@ export interface RuntimeInfo {
   emotionDiagnosticsAvailable: boolean;
   sceneWorldV1Enabled: boolean;
   audioV1Enabled: boolean;
+  cloudTtsEnabled: boolean;
 }
 
 export interface PublicEmotionFeedback {

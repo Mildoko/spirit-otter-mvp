@@ -13,5 +13,6 @@ export function registerRuntimeRoute(app: FastifyInstance, env: AppEnv, gateway:
     emotionDiagnosticsAvailable: env.OTTER_RUNTIME_MODE !== "full",
     sceneWorldV1Enabled: env.SCENE_WORLD_V1,
     audioV1Enabled: env.AUDIO_V1,
+    cloudTtsEnabled: Boolean(env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION),
   }));
 }

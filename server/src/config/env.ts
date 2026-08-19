@@ -38,6 +38,9 @@ const envSchema = z.object({
   EMOTION_INFERENCE_V2: booleanFromStringDefaultFalse,
   SCENE_WORLD_V1: booleanFromStringDefaultFalse,
   AUDIO_V1: booleanFromStringDefaultFalse,
+  AZURE_SPEECH_KEY: z.string().default(""),
+  AZURE_SPEECH_REGION: z.string().default(""),
+  AZURE_SPEECH_VOICE: z.string().default("zh-CN-XiaoxiaoNeural"),
   BUILD_VERSION: z.string().min(1).default("auto"),
 });
 

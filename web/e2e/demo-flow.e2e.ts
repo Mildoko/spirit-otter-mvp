@@ -50,8 +50,8 @@ test("演示模式完成深汐、自动混合、拾岸、行动和安全退场",
   await page.goto("/");
   await expect(page.getByText("本地演示，不保存数据")).toBeVisible();
   await expect(page.getByRole("region", { name: "灵体水面世界" })).toBeVisible();
-  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
-  await expect(page.getByRole("region", { name: "与灵体水獭的对话" })).toBeVisible();
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await expect(page.getByRole("region", { name: "与 tata 的对话" })).toBeVisible();
 
   await page.locator(".composer textarea").fill("事情都堆在一起，我不知道先做哪个，想先说说。");
   await page.getByRole("button", { name: "发送消息" }).click();
@@ -83,18 +83,26 @@ test("演示模式完成深汐、自动混合、拾岸、行动和安全退场",
 
 test("情绪推测可纠正并在同一浏览器刷新后恢复", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
   await page.locator(".composer textarea").fill("我很生气。");
   await page.getByRole("button", { name: "发送消息" }).click();
-  await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("愤怒");
+  const interpretation = page.getByRole("region", { name: "tata 的情绪推测" });
+  await expect(interpretation).toContainText("愤怒");
+  await expect(page.getByRole("region", { name: "与 tata 的对话" }).getByRole("region", { name: "tata 的情绪推测" })).toHaveCount(0);
+  const box = await interpretation.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(Math.abs((box!.x + box!.width / 2) - viewport!.width / 2)).toBeLessThan(3);
+  expect(box!.y).toBeLessThan(140);
   await page.getByRole("button", { name: "不准确" }).click();
   await page.getByRole("button", { name: "失望" }).click();
   await page.getByRole("button", { name: "采用这些词" }).click();
-  await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("已按你的纠正");
-  await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("失望");
+  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toContainText("已按你的纠正");
+  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toContainText("失望");
   await page.reload();
-  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
-  await expect(page.getByRole("region", { name: "水獭的情绪推测" })).toContainText("失望");
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toContainText("失望");
 });
 
 test("场景可切换星空、收起对话并恢复", async ({ page }) => {
@@ -102,33 +110,34 @@ test("场景可切换星空、收起对话并恢复", async ({ page }) => {
   await page.getByRole("button", { name: "仰望星空" }).click();
   await expect(page.getByRole("button", { name: "返回水面" })).toBeVisible();
   await page.getByRole("button", { name: "返回水面" }).click();
-  const otterButton = page.getByRole("button", { name: "靠近灵体水獭并打开对话" });
+  const otterButton = page.getByRole("button", { name: "靠近 tata 并打开对话" });
   await otterButton.focus();
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "收起对话" }).click();
-  await expect(page.getByRole("region", { name: "与灵体水獭的对话" })).toHaveCount(0);
-  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
-  await expect(page.getByRole("region", { name: "与灵体水獭的对话" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "与 tata 的对话" })).toHaveCount(0);
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await expect(page.getByRole("region", { name: "与 tata 的对话" })).toBeVisible();
 });
 
 test("声音需明确开启，新回复朗读一次，刷新不重播并支持分项控制", async ({ page }) => {
   await installAudioStubs(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
-  const enableSound = page.getByRole("button", { name: "开启声音" });
-  await expect(enableSound).toBeVisible();
-  await enableSound.click();
+  await expect(page.getByRole("status").filter({ hasText: "tata" })).toBeVisible();
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
   await expect(page.getByRole("button", { name: "静音" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ((window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents ?? []).filter((event) => event.type === "speak").length)).toBe(1);
+  const welcomeSpeech = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; text?: string }> }).__otterAudioEvents.find((event) => event.type === "speak"));
+  expect(welcomeSpeech?.text).toContain("tata");
 
   await page.locator(".composer textarea").fill("今天有点累，想先说说。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.locator(".message-assistant").last()).toBeVisible();
-  await expect.poll(() => page.evaluate(() => ((window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents ?? []).filter((event) => event.type === "speak").length)).toBe(1);
-  const spoken = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; rate?: number }> }).__otterAudioEvents.find((event) => event.type === "speak"));
-  expect(spoken?.rate).toBe(0.92);
+  await expect.poll(() => page.evaluate(() => ((window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents ?? []).filter((event) => event.type === "speak").length)).toBe(2);
+  const spoken = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; rate?: number }> }).__otterAudioEvents.filter((event) => event.type === "speak").at(-1));
+  expect(spoken?.rate).toBe(0.96);
 
-  await page.getByRole("button", { name: "重播这条水獭回复" }).click();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(2);
+  await page.getByRole("button", { name: "重播这条 tata 回复" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(3);
 
   await page.getByRole("button", { name: "打开设置" }).click();
   await page.getByRole("checkbox", { name: "场景背景音乐" }).uncheck();
@@ -136,14 +145,41 @@ test("声音需明确开启，新回复朗读一次，刷新不重播并支持�
   await page.getByRole("button", { name: "关闭设置" }).click();
   await page.reload();
   const countAfterReload = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length);
-  expect(countAfterReload).toBe(2);
+  expect(countAfterReload).toBe(3);
 
-  await page.getByRole("button", { name: "开启声音" }).click();
-  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(4);
   await page.locator(".composer textarea").fill("我马上要从楼顶跳下去。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.getByRole("button", { name: "请现场研究人员过来" })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(3);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(5);
   const safetySpeech = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; rate?: number }> }).__otterAudioEvents.filter((event) => event.type === "speak").at(-1));
-  expect(safetySpeech?.rate).toBe(0.95);
+  expect(safetySpeech?.rate).toBe(0.93);
+});
+
+test("语音输入只填入独立输入栏，用户确认后才发送", async ({ page }) => {
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      lang = ""; continuous = false; interimResults = true;
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onend: (() => void) | null = null;
+      start() {
+        queueMicrotask(() => {
+          this.onresult?.({ results: [Object.assign([{ transcript: "我想用语音和 tata 说说话" }], { isFinal: true })] });
+          this.onend?.();
+        });
+      }
+      stop() { this.onend?.(); }
+      abort() {}
+    }
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: FakeRecognition });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await page.getByRole("button", { name: "开始语音输入" }).click();
+  await expect(page.locator(".composer textarea")).toHaveValue("我想用语音和 tata 说说话");
+  await expect(page.locator(".message-user")).toHaveCount(0);
+  await page.getByRole("button", { name: "发送消息" }).click();
+  await expect(page.locator(".message-user").last()).toContainText("我想用语音和 tata 说说话");
 });

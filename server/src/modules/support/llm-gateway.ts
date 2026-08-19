@@ -39,6 +39,8 @@ const repairInstructions: Record<string, string> = {
   RISK_EXPRESSIVE_ACCENT_LEAK: "删除警句和幽默，改用克制、直接的安全表达。",
   ELEVATED_SAFETY_CHECK_MISSING: "补充一次轻量的当下安全与现实支持确认。",
   DEEP_TIDE_DIRECT_ADVICE: "删除直接建议和步骤，只保留具体承接。",
+  REQUESTED_ADVICE_MISSING: "用户已明确请求建议：先接住具体处境，再直接给出一条清楚、有理由、可拒绝的建议或真实看法，不要列清单。",
+  REQUESTED_ADVICE_DEFERRED: "删除拒答、拖延和‘先停在这里’式表达，不要只复述用户；本轮必须正面回答其建议请求。",
   REPLY_TOO_LONG: "压缩为不超过五句、500字；高过载或风险场景压缩为两到三个短句。",
   UNSUPPORTED_EMOTION_ASSERTION: "删除没有证据的确定情绪命名，只回应用户原文事实；需要推测时使用‘可能、听着像’。",
   CONTRADICTS_USER_CORRECTION: "采用用户刚刚纠正的情绪说法，删除与其冲突的标签。",

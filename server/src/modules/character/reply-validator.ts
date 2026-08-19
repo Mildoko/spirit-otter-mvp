@@ -79,7 +79,13 @@ export function validateGeneratedReply(input: {
   if (questionCount > style.profile.questionBudget) add("QUESTION_BUDGET_EXCEEDED", "hard");
   if (!plan.allowActionDraft && actionDraft !== null) add("UNAUTHORIZED_ACTION", "hard");
   if (actionDraft && actionDraft.length > 60) add("ACTION_TOO_LONG", "hard");
-  if (plan.activeSpirit === "deep_tide" && adviceMarkers.some((marker) => reply.includes(marker))) add("DEEP_TIDE_DIRECT_ADVICE", "hard");
+  if (plan.activeSpirit === "deep_tide" && plan.primaryStrategy !== "answer_requested_advice" && adviceMarkers.some((marker) => reply.includes(marker))) add("DEEP_TIDE_DIRECT_ADVICE", "hard");
+  if (plan.primaryStrategy === "answer_requested_advice") {
+    const answersWithAdvice = /(?:我的建议|我会建议|我更倾向|我觉得|我的看法|不妨|可以试试|可以先|先把|更值得)/u.test(reply);
+    const defersAnswer = /(?:先让.{0,10}(?:落在|停在)|不把它翻译成办法|先不急着给.{0,4}建议|先不添办法|更想先陪你)/u.test(reply);
+    if (!answersWithAdvice) add("REQUESTED_ADVICE_MISSING", "hard");
+    if (defersAnswer) add("REQUESTED_ADVICE_DEFERRED", "hard");
+  }
   if (["invite_one_small_action", "clarify_then_invite"].includes(plan.primaryStrategy)) {
     const hasActionLeak = /(?:打开|写下|回复).{0,18}(?:邮件|文档|一句|开头)/u.test(reply) || /(?:先做|第一步).{0,12}(?:是|：|:|可以)/u.test(reply) || /(?:动作|一步).{0,12}(?:是|可以是|试试)/u.test(reply);
     const hasLowPressureInvite = /(?:如果你愿意|要不要|愿不愿意|是否愿意|可以由你决定|也可以先不)/u.test(reply);

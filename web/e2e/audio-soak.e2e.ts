@@ -127,7 +127,7 @@ test("声音引擎持续运行 30 分钟不重复创建上下文或叠加语音"
   await installRuntimeAudioProbes(page);
   await enableSound.click();
   console.log("[audio-soak-step] sound-unlocked");
-  await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
   console.log("[audio-soak-step] dialog-open");
   await page.locator(".composer textarea").fill("今天有点累，想先说说。");
   await page.getByRole("button", { name: "发送消息" }).click();
@@ -151,8 +151,8 @@ test("声音引擎持续运行 30 分钟不重复创建上下文或叠加语音"
     const toSky = rounds % 2 === 0;
     await page.getByRole("button", { name: "收起对话" }).click();
     await page.getByRole("button", { name: toSky ? "仰望星空" : "返回水面" }).click();
-    await page.getByRole("button", { name: "靠近灵体水獭并打开对话" }).click();
-    await page.getByRole("button", { name: "重播这条水獭回复" }).click();
+    await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+    await page.getByRole("button", { name: "重播这条 tata 回复" }).click();
     if (rounds > 0 && rounds % 10 === 0) {
       await page.getByRole("button", { name: "静音" }).click();
       await page.getByRole("button", { name: "恢复声音" }).click();

@@ -63,10 +63,19 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
   app.get("/api/session/bootstrap", async (request) => {
     const sessionStore = storeFor(request);
     const latestEmotion = sessionStore.latestDisplayEmotion();
+    const currentVisitAt = new Date().toISOString();
+    const previousVisitAt = sessionStore.lastVisitAt;
+    sessionStore.lastVisitAt = currentVisitAt;
     return {
       researchId: sessionStore.researchId,
       researchContact: env.RESEARCH_CONTACT,
       aiReminder: "你正在与 AI 系统互动；演示数据不会保存。",
+      visit: {
+        visitId: randomUUID(),
+        currentVisitAt,
+        ...(previousVisitAt ? { previousVisitAt } : {}),
+        isReturning: Boolean(previousVisitAt),
+      },
       conversation: { id: sessionStore.conversationId },
       messages: sessionStore.messages,
       actions: sessionStore.actions.filter((item) => item.status !== "deleted"),

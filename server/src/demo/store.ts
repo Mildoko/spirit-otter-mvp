@@ -41,6 +41,7 @@ interface DemoMemory extends RecallCandidate {
 export class DemoStore {
   readonly conversationId = "demo-conversation";
   readonly researchId = "DEMO-LOCAL";
+  lastVisitAt: string | undefined;
   activeSpirit: ActiveSpirit = "deep_tide";
   spiritTurnCount = 0;
   companionLockTurns = 0;
@@ -55,6 +56,7 @@ export class DemoStore {
   private safetyTurns = new Set<string>();
 
   reset(): void {
+    this.lastVisitAt = undefined;
     this.activeSpirit = "deep_tide";
     this.spiritTurnCount = 0;
     this.companionLockTurns = 0;

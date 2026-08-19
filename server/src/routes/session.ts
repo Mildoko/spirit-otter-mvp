@@ -5,10 +5,12 @@ import { requireAuth } from "../services/session-service.js";
 import { logBehavior } from "../services/behavior-service.js";
 import { RECORD_DAYS } from "../config/constants.js";
 import { addDays } from "../utils.js";
+import { randomUUID } from "node:crypto";
 
 export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
   app.get("/api/session/bootstrap", async (request) => {
     const auth = await requireAuth(request, db, env);
+    const user = await db.anonymousUser.findUniqueOrThrow({ where: { id: auth.userId }, select: { lastActiveAt: true, createdAt: true } });
     const conversation = await db.conversation.findFirstOrThrow({
       where: { userId: auth.userId },
       orderBy: { updatedAt: "desc" },
@@ -46,6 +48,12 @@ export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, en
       researchId: auth.researchId,
       researchContact: env.RESEARCH_CONTACT,
       aiReminder: "你正在与 AI 系统互动，它不能替代专业医疗或现实中的紧急帮助。",
+      visit: {
+        visitId: randomUUID(),
+        currentVisitAt: now.toISOString(),
+        previousVisitAt: user.lastActiveAt.toISOString(),
+        isReturning: user.lastActiveAt.getTime() - user.createdAt.getTime() > 1000,
+      },
       conversation: { id: conversation.id },
       messages: rawMessages.reverse().map((message) => ({ ...message, createdAt: message.createdAt.toISOString() })),
       actions: actions.map((action) => ({ ...action, createdAt: action.createdAt.toISOString(), updatedAt: action.updatedAt.toISOString() })),

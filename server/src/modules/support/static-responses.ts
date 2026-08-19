@@ -45,6 +45,13 @@ function unusedOpening(input: FallbackReplyInput): string {
   return candidates.find((candidate) => !recent.includes(candidate)) ?? candidates[0]!;
 }
 
+function recentUserAnchor(input: FallbackReplyInput): string {
+  const prior = [...input.recentContext]
+    .reverse()
+    .find((item) => item.startsWith("user:") && !/(?:建议|意见|看法|方向|指路)/u.test(item));
+  return compactAnchor(prior?.replace(/^user:\s*/u, "") ?? input.userText);
+}
+
 export function fallbackReply(input: FallbackReplyInput): { reply: string; actionDraft: string | null } {
   const { plan, style, state, userText } = input;
   const compact = compactAnchor(userText);
@@ -53,6 +60,17 @@ export function fallbackReply(input: FallbackReplyInput): { reply: string; actio
   if (plan.routeReasonCodes.includes("ELEVATED_RISK")) {
     return {
       reply: `${quoted}的分量已经很重了，我先不把它变成任务。我想轻轻确认一件重要的事：你现在安全吗，身边有没有可以联系或陪你一下的人？`,
+      actionDraft: null,
+    };
+  }
+  if (plan.primaryStrategy === "answer_requested_advice") {
+    const prior = recentUserAnchor(input);
+    const subject = prior ? `你前面说的“${prior}”` : "这件事";
+    const relationshipContext = /(?:她|他|喜欢|关系|信任|心意|感受)/u.test(prior);
+    return {
+      reply: relationshipContext
+        ? `有。${subject}让你一边在意、一边又拿不准，悬在那里确实很磨人。我的建议是，先别替她的心意下结论，多看她是否持续愿意靠近、回应和投入；这些实际的东西，比星座或反复猜测更能给你方向。你可以保留喜欢，也给自己留一点不被不确定性拖着走的空间。`
+        : `有。${subject}之所以让你来回想，说明它对你确实重要。我的建议是，先把你真正想保护的东西和目前能确认的事实分开看，再选一个既尊重你的感受、也给自己留有退路的方向；别让最坏的猜测替现实作答。`,
       actionDraft: null,
     };
   }

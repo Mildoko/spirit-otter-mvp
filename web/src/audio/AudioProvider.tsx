@@ -4,6 +4,7 @@ import { AudioDirector } from "./audio-director";
 import type { AudioSettingsV1, AudioSnapshot, ClientSfxId } from "./types";
 
 interface AudioContextValue extends AudioSnapshot {
+  setCloudTtsEnabled(enabled: boolean): void;
   unlock(): Promise<void>;
   toggleMaster(): void;
   updateSettings(settings: AudioSettingsV1): void;
@@ -35,6 +36,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AudioContextValue>(() => ({
     ...snapshot,
+    setCloudTtsEnabled: (enabled) => director.setCloudTtsEnabled(enabled),
     unlock: () => director.unlock(),
     toggleMaster: () => director.toggleMaster(),
     updateSettings: (settings) => director.updateSettings(settings),

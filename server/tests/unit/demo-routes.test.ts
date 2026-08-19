@@ -20,6 +20,9 @@ describe("demo mode API contract", () => {
     const bootstrap = await app.inject({ method: "GET", url: "/api/session/bootstrap" });
     expect(bootstrap.statusCode).toBe(200);
     expect(bootstrap.json().conversation).not.toHaveProperty("mode");
+    expect(bootstrap.json().visit).toMatchObject({ visitId: expect.any(String), isReturning: false });
+    const returnVisit = await app.inject({ method: "GET", url: "/api/session/bootstrap" });
+    expect(returnVisit.json().visit).toMatchObject({ isReturning: true, previousVisitAt: bootstrap.json().visit.currentVisitAt });
     const conversationId = bootstrap.json().conversation.id as string;
     const blended = await app.inject({ method: "POST", url: "/api/chat/turn", payload: { conversationId, text: "请帮我整理事情。" } });
     expect(blended.statusCode).toBe(200);
@@ -69,7 +72,7 @@ describe("demo mode API contract", () => {
 
   it("exposes safe runtime metadata", async () => {
     expect((await app.inject({ method: "GET", url: "/api/runtime" })).json()).toEqual({
-      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: true, sceneWorldV1Enabled: true, audioV1Enabled: true,
+      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: true, sceneWorldV1Enabled: true, audioV1Enabled: true, cloudTtsEnabled: false,
     });
   });
 

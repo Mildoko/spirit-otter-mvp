@@ -1,7 +1,7 @@
 import type { SoundscapePolicyV1 } from "@otter/shared";
 import { bgmAssets, sfxAssets } from "./assets";
 import { loadAudioSettings, saveAudioSettings } from "./settings";
-import { BrowserSpeechAdapter } from "./speech-adapter";
+import { CloudFirstSpeechAdapter } from "./cloud-speech-adapter";
 import type { AgentSpeechRequest, AudioSettingsV1, AudioSnapshot, ClientSfxId, SpeechAdapter } from "./types";
 import { resolveVoiceProfile, validateVoiceProfileRegistry } from "./voice-profiles";
 
@@ -38,7 +38,7 @@ export class AudioDirector {
   private disposed = false;
 
   constructor(
-    private readonly speech: SpeechAdapter = new BrowserSpeechAdapter(),
+    private readonly speech: SpeechAdapter = new CloudFirstSpeechAdapter(),
     settings: AudioSettingsV1 = loadAudioSettings(),
     private readonly fetchAudio: typeof fetch = globalThis.fetch.bind(globalThis),
   ) {
@@ -56,6 +56,10 @@ export class AudioDirector {
       soundscapePolicy: this.soundscapePolicy,
       error: this.error,
     };
+  }
+
+  setCloudTtsEnabled(enabled: boolean): void {
+    if (this.speech instanceof CloudFirstSpeechAdapter) this.speech.setCloudEnabled(enabled);
   }
 
   subscribe(listener: Listener): () => void {

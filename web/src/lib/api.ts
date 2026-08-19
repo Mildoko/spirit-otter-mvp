@@ -49,6 +49,12 @@ export interface BootstrapData {
   actions: Array<{ id: string; text: string; status: string; createdAt: string }>;
   followups: Array<{ id: string; actionId: string; dueAt: string; status: string; action: { id: string; text: string; status: string } }>;
   lastEmotion?: { turnId: string; interpretation: PublicEmotionInterpretation };
+  visit: {
+    visitId: string;
+    currentVisitAt: string;
+    previousVisitAt?: string;
+    isReturning: boolean;
+  };
 }
 
 export interface DevEvaluation {

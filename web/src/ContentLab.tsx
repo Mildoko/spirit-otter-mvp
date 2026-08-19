@@ -49,7 +49,7 @@ export function ContentLab() {
   return (
     <main className="lab-shell">
       <header className="lab-header">
-        <div><p className="eyebrow">LOCAL CONTENT LAB</p><h1>灵体水獭内容验收台</h1><p>免邀请码、免数据库，只检查角色、自动路由与安全边界。</p></div>
+        <div><p className="eyebrow">LOCAL CONTENT LAB</p><h1>tata 内容验收台</h1><p>免邀请码、免数据库，只检查角色、自动路由与安全边界。</p></div>
         <div className="lab-status"><strong>仅限本地测试</strong><span>{status?.modelConfigured ? `${status.provider} / ${status.model}` : "本地降级回复（未配置模型密钥）"}</span></div>
       </header>
 
@@ -82,7 +82,7 @@ export function ContentLab() {
             </div>
             <article className="lab-reply"><span>最终用户回复</span><p>{result.reply}</p></article>
             {result.emotionInterpretation && <section className="lab-style" aria-label="情绪推测诊断">
-              <h3>水獭的猜测</h3>
+              <h3>tata 的猜测</h3>
               <p>状态：{result.emotionInterpretation.status} · 标签：{result.emotionInterpretation.labels.map((item) => `${item.displayName}/${item.intensityLevel}`).join("、") || "无"}</p>
               <p>{result.emotionInterpretation.disclaimer}</p>
             </section>}

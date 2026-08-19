@@ -60,6 +60,13 @@ describe("automatic two-spirit policy router", () => {
     expect(detectConversationIntent("并不需要你帮我整理").requestOrganize).toBe(false);
   });
 
+  it("recognizes an explicit request for friendly advice", () => {
+    expect(detectConversationIntent("你有什么建议么").requestAdvice).toBe(true);
+    expect(detectConversationIntent("不行，我希望你给我指路").requestAdvice).toBe(true);
+    expect(detectConversationIntent("你怎么看这件事").requestAdvice).toBe(true);
+    expect(detectConversationIntent("先别给建议，只听我说").requestAdvice).toBe(false);
+  });
+
   it("locks deep tide for two turns after advice refusal", () => {
     const refused = chooseResponsePlan(input({ text: "先别给建议，只听我说", currentSpirit: "shore_pick" }));
     expect(refused.plan.activeSpirit).toBe("deep_tide");
@@ -115,6 +122,14 @@ describe("automatic two-spirit policy router", () => {
     expect(weak.plan.primaryStrategy).toBe("clarify_then_invite");
     expect(stopped.plan.primaryStrategy).toBe("pause_low_signal");
     expect([clarify, weak, stopped].every((item) => !item.plan.allowActionDraft)).toBe(true);
+  });
+
+  it("answers an explicit advice request before the low-signal fallback", () => {
+    const low = { ...signals, expressionClarityScore: 0.2, progressReadinessScore: 0.2 };
+    const result = chooseResponsePlan(input({ text: "你有什么建议么", signals: low }));
+    expect(result.plan.primaryStrategy).toBe("answer_requested_advice");
+    expect(result.plan.routeReasonCodes).toContain("USER_REQUESTED_ADVICE");
+    expect(result.plan.allowActionDraft).toBe(false);
   });
 
   it("accepts a short acknowledgement only for the immediately pending invitation", () => {

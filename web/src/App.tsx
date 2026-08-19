@@ -8,6 +8,9 @@ import { SceneWorld, type RendererState, type WorldView } from "./components/Sce
 import otterPng from "./assets/spirit-otter.png";
 import otterWebp from "./assets/spirit-otter.webp";
 import { useAudio } from "./audio/AudioProvider";
+import { VoiceInputButton } from "./components/VoiceInputButton";
+import { buildWelcomeMessage, type WelcomeMessageV1 } from "./lib/welcome";
+import { mapTataExpression } from "./lib/otter-expression";
 
 type Message = BootstrapData["messages"][number];
 type Action = BootstrapData["actions"][number];
@@ -41,10 +44,15 @@ export function App() {
   const [worldView, setWorldView] = useState<WorldView>(() => window.sessionStorage.getItem("otter-world-view") === "sky" ? "sky" : "horizon");
   const [aiReminderDismissed, setAiReminderDismissed] = useState(false);
   const [messageVoiceProfiles, setMessageVoiceProfiles] = useState<Record<string, string>>({});
+  const [welcome, setWelcome] = useState<WelcomeMessageV1 | null>(null);
+  const [welcomeVisible, setWelcomeVisible] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const visualTimerRef = useRef<number | null>(null);
   const thinkingTimerRef = useRef<number | null>(null);
+  const welcomeSpokenRef = useRef(false);
+  const speechInputBaseRef = useRef("");
+  const speechInputPolicyRef = useRef(audio.soundscapePolicy);
 
   const runVisualAction = (action: VisualActionV1, durationMs = 1800) => {
     if (visualTimerRef.current) window.clearTimeout(visualTimerRef.current);
@@ -62,6 +70,10 @@ export function App() {
     setEmotionInterpretation(data.lastEmotion?.interpretation);
     setEmotionTurnId(data.lastEmotion?.turnId ?? null);
     setScene(data.messages.length === 0 ? "quiet_water" : "underwater_companion");
+    setWelcome(buildWelcomeMessage(data.visit));
+    setWelcomeVisible(true);
+    welcomeSpokenRef.current = false;
+    runVisualAction("notice", 2200);
   };
 
   useEffect(() => {
@@ -90,12 +102,31 @@ export function App() {
   }, [audio, runtime?.audioV1Enabled, worldView]);
 
   useEffect(() => {
+    audio.setCloudTtsEnabled(Boolean(runtime?.cloudTtsEnabled));
+  }, [audio, runtime?.cloudTtsEnabled]);
+
+  useEffect(() => {
     if (!emotionFeedback) return;
     const timer = window.setTimeout(() => setEmotionFeedback(undefined), 6500);
     return () => window.clearTimeout(timer);
   }, [emotionFeedback]);
 
+  useEffect(() => {
+    if (!welcomeVisible) return;
+    const timer = window.setTimeout(() => setWelcomeVisible(false), 9_000);
+    return () => window.clearTimeout(timer);
+  }, [welcomeVisible, welcome?.text]);
+
   const activeAction = useMemo(() => actions.find((item) => item.status !== "deleted") ?? null, [actions]);
+  const expressionCue = useMemo(() => mapTataExpression(emotionInterpretation, scene, welcomeVisible), [emotionInterpretation, scene, welcomeVisible]);
+
+  const playWelcome = async () => {
+    if (!runtime?.audioV1Enabled || !welcome || welcomeSpokenRef.current) return;
+    welcomeSpokenRef.current = true;
+    await audio.unlock();
+    audio.playSfx("notice_soft");
+    audio.speak({ id: `welcome-${bootstrap?.visit.visitId ?? "visit"}`, text: welcome.text, agentId: "spirit_otter", profileId: "spirit_otter.deep_tide" });
+  };
 
   const redeem = async (inviteCode: string) => {
     setError(null);
@@ -162,6 +193,7 @@ export function App() {
   const sceneWorldEnabled = Boolean(runtime?.sceneWorldV1Enabled);
 
   const openDialog = () => {
+    void playWelcome();
     runVisualAction("approach", 1200);
     if (runtime?.audioV1Enabled) audio.playSfx("approach_water");
     setDialogOpen(true);
@@ -186,12 +218,16 @@ export function App() {
         onOtterActivate={openDialog}
         onRendererState={setRendererState}
         showDiagnostics={runtime?.mode !== "full"}
+        expressionCue={expressionCue}
+        dialogOpen={dialogOpen}
+        {...(welcomeVisible && welcome ? { welcomeText: welcome.text } : {})}
+        {...(welcomeVisible && welcome?.timeLabel ? { welcomeTimeLabel: welcome.timeLabel } : {})}
       />}
       <header className="topbar">
-        <div className="brand"><span className="brand-dot" /> <strong>浮屿</strong><span>与灵体水獭待一会儿</span></div>
+        <div className="brand"><span className="brand-dot" /> <strong>浮屿</strong><span>与 tata 待一会儿</span></div>
         <div className="topbar-actions">
           {runtime?.audioV1Enabled && <button className={`sound-button sound-${audio.status}`} onClick={async () => {
-            if (!audio.unlocked) { await audio.unlock(); audio.playSfx("notice_soft"); }
+            if (!audio.unlocked) await playWelcome();
             else audio.toggleMaster();
           }} aria-label={!audio.unlocked ? "开启声音" : audio.settings.masterEnabled ? "静音" : "恢复声音"} aria-pressed={audio.unlocked && audio.settings.masterEnabled}>
             <span aria-hidden="true">{!audio.unlocked ? "♪" : audio.settings.masterEnabled ? "◖))" : "◖×"}</span>{!audio.unlocked ? "开启声音" : audio.speaking ? "正在朗读" : audio.settings.masterEnabled ? "声音已开" : "已静音"}
@@ -211,25 +247,30 @@ export function App() {
 
       {(timeReminder || (!aiReminderDismissed && bootstrap.aiReminder)) && <aside className="ai-reminder"><span>{timeReminder ? "你已经连续使用一段时间。这里是 AI 服务，先离开屏幕休息一下也很好。" : bootstrap.aiReminder}</span><button onClick={() => { setTimeReminder(false); setAiReminderDismissed(true); }} aria-label="关闭提醒">×</button></aside>}
 
+      {emotionFeedbackEnabled && emotionInterpretation && emotionTurnId && scene !== "safety_plain" && <div className="emotion-interpretation-overlay">
+        <EmotionInterpretationCard
+          turnId={emotionTurnId}
+          interpretation={emotionInterpretation}
+          onCorrect={async (verdict, labels) => {
+            const result = await api.correctEmotion({ turnId: emotionTurnId, verdict, ...(labels ? { labels } : {}) });
+            setEmotionInterpretation(result.emotionInterpretation);
+            setOperationNotice(verdict === "accurate" ? "已记录：这次猜测准确" : "已按你的纠正更新，本次会话下一轮会参考");
+          }}
+        />
+      </div>}
+
       <section className={`experience-layout${sceneWorldEnabled ? " world-experience-layout" : ""}`}>
-        {!sceneWorldEnabled && <aside className="character-panel" aria-label="灵体水獭场景">
+        {!sceneWorldEnabled && <aside className="character-panel" aria-label="tata 的水面场景">
           <div className="scene-caption"><span>{scene === "surface_organize" ? "水面 · 聚焦一件事" : scene === "near_surface_transition" ? "近水面 · 看清一点" : scene === "safety_plain" ? "直接支持" : "静水区 · 先听你说"}</span></div>
           {scene !== "safety_plain" && <div className="otter-stage">
-            <picture><source srcSet={otterWebp} type="image/webp" /><img src={otterPng} alt="一只安静、克制地陪在水面的灵体水獭" className="otter-image" /></picture>
+            <picture><source srcSet={otterWebp} type="image/webp" /><img src={otterPng} alt="安静陪在水面的 tata" className="otter-image" /></picture>
+            <div className={`tata-expression tata-expression-${expressionCue.expression}`} role="img" aria-label={expressionCue.label}><span aria-hidden="true">{expressionCue.symbol}</span></div>
+            {welcomeVisible && welcome && <aside className="tata-welcome-bubble" role="status"><strong>tata</strong><p>{welcome.text}</p>{welcome.timeLabel && <small>{welcome.timeLabel}</small>}</aside>}
             {emotionFeedbackEnabled && emotionFeedback && emotionFeedback.cues.length > 0 && <div className="emotion-floats" aria-label={emotionFeedback.disclaimer}>
               {emotionFeedback.cues.map((cue, index) => <span key={`${emotionFeedback.observedAt}-${cue.dimension}`} className={`emotion-float emotion-${cue.tone} emotion-slot-${index + 1}`}>{cue.text}</span>)}
               <small>{emotionFeedback.disclaimer}</small>
             </div>}
           </div>}
-          {emotionFeedbackEnabled && emotionInterpretation && emotionTurnId && scene !== "safety_plain" && <EmotionInterpretationCard
-            turnId={emotionTurnId}
-            interpretation={emotionInterpretation}
-            onCorrect={async (verdict, labels) => {
-              const result = await api.correctEmotion({ turnId: emotionTurnId, verdict, ...(labels ? { labels } : {}) });
-              setEmotionInterpretation(result.emotionInterpretation);
-              setOperationNotice(verdict === "accurate" ? "已记录：这次猜测准确" : "已按你的纠正更新，本次会话下一轮会参考");
-            }}
-          />}
           {runtime?.emotionDiagnosticsAvailable && emotionDiagnostics && scene !== "safety_plain" && <section className="emotion-diagnostics" aria-label="情绪状态诊断">
             <strong>状态诊断 · {emotionDiagnostics.signalSource === "cloud_model" ? "真实模型" : "本地规则"}</strong>
             {(["valence", "arousal", "stressLoad", "cognitiveOverload", "supportNeed"] as const).map((key) => <div key={key}>
@@ -245,8 +286,8 @@ export function App() {
           <blockquote>{scene === "surface_organize" ? "我们只捞起眼前的一件事。" : scene === "safety_plain" ? "现在先把安全放在最前面。" : "我在听，不急着把你推向答案。"}</blockquote>
         </aside>}
 
-        {(!sceneWorldEnabled || dialogOpen) && <section className={`conversation-card${sceneWorldEnabled ? " conversation-drawer" : ""}`} aria-label="与灵体水獭的对话">
-          {sceneWorldEnabled && <header className="drawer-header"><div><small>水面上的对话</small><strong>澜泊在听</strong></div><button onClick={closeDialog} aria-label="收起对话">×</button></header>}
+        {(!sceneWorldEnabled || dialogOpen) && <section className={`conversation-card face-dialogue${sceneWorldEnabled ? " conversation-drawer" : ""}`} aria-label="与 tata 的对话">
+          {sceneWorldEnabled && <header className="drawer-header"><div><small>水面上的对话</small><strong>tata 在听</strong></div><button onClick={closeDialog} aria-label="收起对话">×</button></header>}
           {followups.length > 0 && <div className="followup-stack">
             {followups.map((item) => <article className="followup-card" key={item.id}>
               <span>上次留下的小物件</span><p>{item.action.text}</p>
@@ -255,23 +296,14 @@ export function App() {
           </div>}
 
           <div className="messages" aria-live="polite">
-            {messages.length === 0 && <div className="empty-state"><p>今天想从哪里开始？</p><span>不用选择方式。你可以只是说说，也可以直接告诉澜泊想把哪件事理清一点。</span></div>}
-            {messages.map((message) => <article key={message.id} className={`message message-${message.role}`}><span>{message.role === "assistant" ? "水獭" : "你"}</span><p>{message.content}</p>{message.role === "assistant" && runtime?.audioV1Enabled && <button className="voice-replay" onClick={() => audio.replay({ id: `replay-${message.id}`, text: message.content, agentId: "spirit_otter", profileId: messageVoiceProfiles[message.id] ?? "spirit_otter.deep_tide" })} aria-label="重播这条水獭回复">↻ 语音</button>}</article>)}
-            {busy && <article className="message message-assistant thinking"><span>水獭</span><p><i /><i /><i /></p></article>}
+            {messages.length === 0 && <div className="empty-state"><p>今天想从哪里开始？</p><span>不用选择方式。你可以只是说说，也可以直接告诉 tata 想把哪件事理清一点。</span></div>}
+            {messages.map((message) => <article key={message.id} className={`message message-${message.role}`}><span>{message.role === "assistant" ? "tata" : "你"}</span><p>{message.content}</p>{message.role === "assistant" && runtime?.audioV1Enabled && <button className="voice-replay" onClick={() => audio.replay({ id: `replay-${message.id}`, text: message.content, agentId: "spirit_otter", profileId: messageVoiceProfiles[message.id] ?? "spirit_otter.deep_tide" })} aria-label="重播这条 tata 回复">↻ 语音</button>}</article>)}
+            {busy && <article className="message message-assistant thinking"><span>tata</span><p><i /><i /><i /></p></article>}
             {activeAction && <ActionCard action={activeAction} onConfirm={async (text) => { await api.confirmAction(activeAction.id, "confirm", text); refreshAction(activeAction.id, { text, status: "confirmed" }); }} onAbandon={async () => { await api.confirmAction(activeAction.id, "abandon"); refreshAction(activeAction.id, { status: "deleted" }); }} onUpdate={async (status) => { await api.updateAction(activeAction.id, status); refreshAction(activeAction.id, { status }); }} onFollowup={async () => { const due = new Date(Date.now() + 24 * 60 * 60 * 1000); await api.createFollowup(activeAction.id, due.toISOString()); }} />}
             {lastSafetyTurn && <button className="research-help" onClick={() => api.requestHelp(lastSafetyTurn).then((result) => setError(`已记录请求：${result.contact}`))}>请现场研究人员过来</button>}
             <div ref={endRef} />
           </div>
 
-          {sceneWorldEnabled && emotionFeedbackEnabled && emotionInterpretation && emotionTurnId && scene !== "safety_plain" && <EmotionInterpretationCard
-            turnId={emotionTurnId}
-            interpretation={emotionInterpretation}
-            onCorrect={async (verdict, labels) => {
-              const result = await api.correctEmotion({ turnId: emotionTurnId, verdict, ...(labels ? { labels } : {}) });
-              setEmotionInterpretation(result.emotionInterpretation);
-              setOperationNotice(verdict === "accurate" ? "已记录：这次猜测准确" : "已按你的纠正更新，本次会话下一轮会参考");
-            }}
-          />}
           {sceneWorldEnabled && runtime?.emotionDiagnosticsAvailable && characterDiagnostics && <section className="world-diagnostics-summary" aria-label="场景与角色诊断">
             <strong>角色路由：{characterDiagnostics.activeSpirit}</strong>
             <span>{characterDiagnostics.transitionStyle} · 锁定 {characterDiagnostics.lockTurnsRemaining} 轮</span>
@@ -282,6 +314,19 @@ export function App() {
           {operationNotice && <p className="operation-notice" role="status" aria-live="polite">{operationNotice}</p>}
           <form className="composer" onSubmit={send}>
             <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder={scene === "surface_organize" || scene === "near_surface_transition" ? "把眼前最想理清的一件事放在这里…" : "把此刻最压着你的部分放在这里…"} rows={2} maxLength={6000} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} />
+            <VoiceInputButton
+              disabled={busy}
+              onStart={() => {
+                speechInputBaseRef.current = input.trim();
+                speechInputPolicyRef.current = audio.soundscapePolicy;
+                audio.cancelSpeech();
+                audio.applySoundscapePolicy("reduced");
+                setOperationNotice("正在听，你可以自然地说");
+              }}
+              onTranscript={(text) => setInput([speechInputBaseRef.current, text].filter(Boolean).join(speechInputBaseRef.current ? " " : ""))}
+              onFinish={() => { audio.applySoundscapePolicy(speechInputPolicyRef.current); setOperationNotice("语音已经放进输入框，可以修改后发送"); }}
+              onNotice={setOperationNotice}
+            />
             <button disabled={busy || !input.trim()} aria-label="发送消息">↑</button>
           </form>
           <p className="composer-note">AI 可能出错；紧急情况请优先联系现场人员或现实支持。</p>
@@ -292,12 +337,12 @@ export function App() {
         <button className="modal-close" autoFocus onClick={() => { setSettingsOpen(false); settingsButtonRef.current?.focus(); }} aria-label="关闭设置">×</button>
         <p className="eyebrow">数据与边界</p><h2 id="settings-title">你的控制权</h2>
         <dl><div><dt>匿名研究编号</dt><dd>{bootstrap.researchId}</dd></div><div><dt>本地保存</dt><dd>对话及系统自动提取的可能重要信息，最长 30 天</dd></div><div><dt>云端处理</dt><dd>对话会发送给模型供应商；本地删除不控制其日志。</dd></div><div><dt>反馈、申诉或求助</dt><dd>{bootstrap.researchContact}</dd></div></dl>
-        <label className="setting-toggle"><input type="checkbox" checked={emotionFeedbackEnabled} onChange={(event) => { const enabled = event.target.checked; setEmotionFeedbackEnabled(enabled); window.localStorage.setItem("otter-emotion-feedback", enabled ? "on" : "off"); if (!enabled) { setEmotionFeedback(undefined); setEmotionInterpretation(undefined); } }} /><span>显示情绪变化与水獭猜测</span></label>
+        <label className="setting-toggle"><input type="checkbox" checked={emotionFeedbackEnabled} onChange={(event) => { const enabled = event.target.checked; setEmotionFeedbackEnabled(enabled); window.localStorage.setItem("otter-emotion-feedback", enabled ? "on" : "off"); if (!enabled) { setEmotionFeedback(undefined); setEmotionInterpretation(undefined); } }} /><span>显示情绪变化与 tata 的理解</span></label>
         <p className="settings-footnote">情绪提示只是 AI 对这一刻的暂时理解，可能不准确。</p>
         {runtime?.audioV1Enabled && <section className="audio-settings" aria-labelledby="audio-settings-title">
           <h3 id="audio-settings-title">声音</h3>
           <label className="setting-toggle"><input type="checkbox" checked={audio.settings.masterEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, masterEnabled: event.target.checked })} /><span>声音总开关</span></label>
-          <label className="setting-toggle"><input type="checkbox" checked={audio.settings.voiceEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, voiceEnabled: event.target.checked })} /><span>水獭回复语音</span></label>
+          <label className="setting-toggle"><input type="checkbox" checked={audio.settings.voiceEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, voiceEnabled: event.target.checked })} /><span>tata 回复语音</span></label>
           <label className="setting-toggle"><input type="checkbox" checked={audio.settings.bgmEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, bgmEnabled: event.target.checked })} /><span>场景背景音乐</span></label>
           <label className="setting-toggle"><input type="checkbox" checked={audio.settings.sfxEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, sfxEnabled: event.target.checked })} /><span>场景互动音效</span></label>
           <label className="volume-setting"><span>总音量</span><input aria-label="总音量" type="range" min="0" max="1" step="0.05" value={audio.settings.masterVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, masterVolume: Number(event.target.value) })} /></label>
@@ -305,6 +350,7 @@ export function App() {
           <label className="volume-setting"><span>背景音乐</span><input aria-label="背景音乐音量" type="range" min="0" max="1" step="0.05" value={audio.settings.bgmVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, bgmVolume: Number(event.target.value) })} /></label>
           <label className="volume-setting"><span>互动音效</span><input aria-label="互动音效音量" type="range" min="0" max="1" step="0.05" value={audio.settings.sfxVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, sfxVolume: Number(event.target.value) })} /></label>
           <p className="settings-footnote">首次需要点击页面上方的“开启声音”。关闭背景音乐和音效后，仍可单独保留回复语音。</p>
+          <p className="settings-footnote">当前音色：{runtime.cloudTtsEnabled ? "tata · 晓晓甜美女声（云端）" : "tata · 中文女性系统声线（云端晓晓未配置时的降级）"}</p>
           {!audio.speechSupported && <p className="settings-footnote" role="status">当前浏览器没有可用的系统语音，文字、背景音乐和音效仍可使用。</p>}
         </section>}
         <button className="secondary-button" onClick={() => void api.exportMe()}>导出我的数据</button>

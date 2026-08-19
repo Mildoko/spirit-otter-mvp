@@ -3,6 +3,7 @@ import { DEFAULT_GUIDANCE_STATE } from "./guidance-state.js";
 
 export interface ConversationIntent {
   refuseAdvice: boolean;
+  requestAdvice: boolean;
   requestOrganize: boolean;
   directActionRequest: boolean;
   tentativeOrganize: boolean;
@@ -33,6 +34,11 @@ export interface PolicyResult {
 }
 
 const refuseAdvicePatterns = [/(?:别|不要|不用|先别).{0,8}(?:建议|办法|步骤|教我|解决)/, /(?:只|先|想).{0,5}(?:听我说|陪我|让我说|说说|聊聊)/];
+const requestAdvicePatterns = [
+  /(?:你|能不能|可以)?(?:给我|给点|有什么|有何).{0,8}(?:建议|意见|看法|方向|办法)/u,
+  /(?:你觉得|你怎么看|换作是你|如果是你)/u,
+  /(?:希望|需要|请).{0,10}(?:你给我指路|给个方向|给我建议|直接说说你的看法)/u,
+];
 const organizePatterns = [
   /(?:帮我|替我|一起).{0,8}(?:整理|理一理|理一下|梳理|排一下)/,
   /(?:想|需要|先).{0,8}(?:理出|理清|整理|梳理)(?:一个|一下|一点|出)?/,
@@ -66,6 +72,7 @@ const allowQuestionPatterns = [/(?:可以|你可以|允许).{0,5}(?:问|提问)/
 
 export function detectConversationIntent(text: string, guidanceState: GuidanceStateV1 = DEFAULT_GUIDANCE_STATE): ConversationIntent {
   const refuseAdvice = refuseAdvicePatterns.some((pattern) => pattern.test(text));
+  const requestAdvice = !refuseAdvice && requestAdvicePatterns.some((pattern) => pattern.test(text));
   const stopOrganizing = stopPatterns.some((pattern) => pattern.test(text));
   const requestOrganize = !refuseAdvice && !stopOrganizing && organizePatterns.some((pattern) => pattern.test(text));
   const tentativeOrganize = requestOrganize && tentativeOrganizePatterns.some((pattern) => pattern.test(text));
@@ -75,7 +82,7 @@ export function detectConversationIntent(text: string, guidanceState: GuidanceSt
   const declinedTransition = inviteIsCurrent && declineTransitionPatterns.some((pattern) => pattern.test(text));
   const requestNoQuestions = noQuestionPatterns.some((pattern) => pattern.test(text));
   const allowQuestions = allowQuestionPatterns.some((pattern) => pattern.test(text));
-  return { refuseAdvice, requestOrganize, directActionRequest, tentativeOrganize, stopOrganizing, acceptedTransition, declinedTransition, requestNoQuestions, allowQuestions };
+  return { refuseAdvice, requestAdvice, requestOrganize, directActionRequest, tentativeOrganize, stopOrganizing, acceptedTransition, declinedTransition, requestNoQuestions, allowQuestions };
 }
 
 function finalize(input: PolicyInput, plan: ResponsePlan, lock: number): PolicyResult {
@@ -119,6 +126,16 @@ export function chooseResponsePlan(input: PolicyInput): PolicyResult {
       allowActionDraft: false, routeReasonCodes: ["ELEVATED_RISK"], lockTurnsRemaining: 0,
       allowedContent: ["具体承接", "降低节奏", "轻量确认当前是否安全或是否有人可联系", "现实支持"],
       forbiddenContent: ["立即解决", "任务清单", "依赖强化", "诊断", "警句", "幽默"],
+    }, 0);
+  }
+
+  if (intent.requestAdvice) {
+    return finalize(input, {
+      ...base, activeSpirit: "deep_tide", transitionStyle: input.currentSpirit === "shore_pick" ? "blend_to_deep" : "steady",
+      supportMode: "validate", sceneState: "underwater_companion", primaryStrategy: "answer_requested_advice",
+      allowActionDraft: false, routeReasonCodes: ["USER_REQUESTED_ADVICE"], lockTurnsRemaining: 0,
+      allowedContent: ["先接住具体情绪或矛盾", "直接回答用户的问题", "一条有理由且可拒绝的建议或真实看法"],
+      forbiddenContent: ["只复述而不回答", "模板化安抚", "多步骤清单", "诊断", "替用户做决定"],
     }, 0);
   }
 

@@ -22,6 +22,7 @@ import { registerDemoRoutes } from "./routes/demo.js";
 import { DemoStore } from "./demo/store.js";
 import { validateCharacterRegistry } from "./modules/character/schemas.js";
 import { validateServerVoiceProfileRegistry } from "./modules/support/audio-cue.js";
+import { registerSpeechRoute } from "./routes/speech.js";
 
 export interface AppDependencies {
   orchestrator?: Pick<SupportOrchestrator, "run">;
@@ -73,6 +74,7 @@ export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependenc
   }
   const orchestrator = dependencies.orchestrator ?? new SupportOrchestrator(gateway, env);
   registerRuntimeRoute(app, env, gateway);
+  registerSpeechRoute(app, env, db);
   if (env.OTTER_RUNTIME_MODE === "full") {
     registerHealthRoute(app, db);
     registerAuthRoutes(app, db, env);

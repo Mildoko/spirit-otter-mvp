@@ -1,13 +1,13 @@
 import type { AgentIdV1 } from "@otter/shared";
 import type { VoiceProfileV1 } from "./types";
 
-const preferredChineseVoices = ["Xiaoxiao", "晓晓", "Ting-Ting", "婷婷", "Yaoyao", "遥遥", "Huihui", "慧慧"] as const;
+const preferredChineseVoices = ["Microsoft Xiaoxiao", "Xiaoxiao", "晓晓", "Ting-Ting", "婷婷", "Yaoyao", "遥遥", "Huihui", "慧慧"] as const;
 
 export const voiceProfileRegistry = {
   spirit_otter: {
-    "spirit_otter.deep_tide": { id: "spirit_otter.deep_tide", agentId: "spirit_otter", locale: "zh-CN", rate: 0.92, pitch: 0.96, preferredVoiceNames: preferredChineseVoices },
-    "spirit_otter.shore_pick": { id: "spirit_otter.shore_pick", agentId: "spirit_otter", locale: "zh-CN", rate: 1, pitch: 1, preferredVoiceNames: preferredChineseVoices },
-    "spirit_otter.safety_plain": { id: "spirit_otter.safety_plain", agentId: "spirit_otter", locale: "zh-CN", rate: 0.95, pitch: 1, preferredVoiceNames: preferredChineseVoices },
+    "spirit_otter.deep_tide": { id: "spirit_otter.deep_tide", agentId: "spirit_otter", locale: "zh-CN", rate: 0.96, pitch: 1.05, preferredVoiceNames: preferredChineseVoices },
+    "spirit_otter.shore_pick": { id: "spirit_otter.shore_pick", agentId: "spirit_otter", locale: "zh-CN", rate: 1.02, pitch: 1.08, preferredVoiceNames: preferredChineseVoices },
+    "spirit_otter.safety_plain": { id: "spirit_otter.safety_plain", agentId: "spirit_otter", locale: "zh-CN", rate: 0.93, pitch: 1.02, preferredVoiceNames: preferredChineseVoices },
   },
 } as const satisfies Record<AgentIdV1, Record<string, VoiceProfileV1>>;
 

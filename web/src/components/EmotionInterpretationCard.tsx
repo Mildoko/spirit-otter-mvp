@@ -51,9 +51,9 @@ export function EmotionInterpretationCard(props: {
       ? "暂未读到明显情绪"
       : props.interpretation.labels.map((item) => `${item.displayName} · ${intensityNames[item.intensityLevel]}`).join("  ＋  ");
 
-  return <section className="emotion-interpretation" aria-label="水獭的情绪推测">
+  return <section className="emotion-interpretation" aria-label="tata 的情绪推测">
     <div className="emotion-interpretation-head">
-      <span>{props.interpretation.status === "user_corrected" ? "已按你的纠正" : "水獭的猜测"}</span>
+      <span>{props.interpretation.status === "user_corrected" ? "已按你的纠正" : "tata 的猜测"}</span>
       <strong>{summary}</strong>
     </div>
     <p>{props.interpretation.disclaimer}</p>

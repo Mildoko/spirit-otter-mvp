@@ -63,6 +63,39 @@ describe("generated reply validator", () => {
     expect(result.violations.map((item) => item.code)).not.toContain("DEEP_TIDE_DIRECT_ADVICE");
   });
 
+  it("requires a direct answer when the user explicitly asks for advice", () => {
+    const advicePlan = { ...plan, primaryStrategy: "answer_requested_advice", routeReasonCodes: ["USER_REQUESTED_ADVICE"] };
+    const adviceStyle = resolveResponseStyle({ plan: advicePlan, state, recentContext: [], userText: "你有什么建议", riskLevel: "low" });
+    const deferred = validateGeneratedReply({
+      reply: "先让这句话停在这里。我不把它翻译成办法。",
+      actionDraft: null, plan: advicePlan, style: adviceStyle, userText: "你有什么建议", recentContext: [],
+    });
+    expect(deferred.violations.map((item) => item.code)).toEqual(expect.arrayContaining(["REQUESTED_ADVICE_MISSING", "REQUESTED_ADVICE_DEFERRED"]));
+
+    const answered = validateGeneratedReply({
+      reply: "你一边很在意，一边又拿不准，这种悬着确实磨人。我的建议是先看对方实际的回应，别让猜测替现实作答。",
+      actionDraft: null, plan: advicePlan, style: adviceStyle, userText: "你有什么建议", recentContext: [],
+    });
+    expect(answered.hardValid).toBe(true);
+    expect(answered.violations.map((item) => item.code)).not.toContain("DEEP_TIDE_DIRECT_ADVICE");
+  });
+
+  it("uses recent conversation context in the advice fallback instead of repeating the request", () => {
+    const advicePlan = { ...plan, primaryStrategy: "answer_requested_advice", routeReasonCodes: ["USER_REQUESTED_ADVICE"] };
+    const adviceStyle = resolveResponseStyle({ plan: advicePlan, state, recentContext: [], userText: "你有什么建议", riskLevel: "low" });
+    const result = fallbackReply({
+      plan: advicePlan,
+      style: adviceStyle,
+      state,
+      userText: "你有什么建议",
+      recentContext: ["user: 我不确定她对我的感受，可能有点信任，但我一直在猜", "assistant: 听起来这份不确定让你很悬。"],
+    });
+    expect(result.reply).toContain("我不确定她对我的感受");
+    expect(result.reply).toContain("我的建议是");
+    expect(result.reply).not.toContain("我不把它翻译成办法");
+    expect(validateGeneratedReply({ reply: result.reply, actionDraft: null, plan: advicePlan, style: adviceStyle, userText: "你有什么建议", recentContext: [] }).hardValid).toBe(true);
+  });
+
   it("rejects concrete actions before a tentative transition is accepted", () => {
     const transitionPlan = { ...plan, activeSpirit: "shore_pick" as const, transitionStyle: "blend_to_shore" as const, sceneState: "near_surface_transition" as const, primaryStrategy: "invite_one_small_action" };
     const result = validateGeneratedReply({

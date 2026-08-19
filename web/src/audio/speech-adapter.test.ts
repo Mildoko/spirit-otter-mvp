@@ -27,7 +27,7 @@ describe("browser speech adapter", () => {
     const onEnd = vi.fn();
     adapter.speak({ id: "one", text: "你好", profile: resolveVoiceProfile("spirit_otter", "spirit_otter.deep_tide"), volume: 0.8, onStart, onEnd });
     expect(synthesis.cancel).toHaveBeenCalledTimes(1);
-    expect(utterances[0]).toMatchObject({ lang: "zh-CN", rate: 0.92, pitch: 0.96, volume: 0.8 });
+    expect(utterances[0]).toMatchObject({ lang: "zh-CN", rate: 0.96, pitch: 1.05, volume: 0.8 });
     expect(onStart).toHaveBeenCalledOnce();
     current?.onend?.({} as SpeechSynthesisEvent);
     expect(onEnd).toHaveBeenCalledOnce();

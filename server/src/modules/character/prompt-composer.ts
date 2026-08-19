@@ -47,6 +47,10 @@ export function composeCharacterPrompt(input: PromptComposerInput): { system: st
     `## 当前状态（暂时工作假设）\n${JSON.stringify(input.state)}`,
     emotionSection,
     `## 本轮回应风格（不得覆盖安全规则和行动授权）\n${styleInstructions(input.style).join("\n")}\n原因：${input.style.reasonCodes.join("、")}\n回复骨架：${input.style.replyOutline.join(" → ")}\n避免重复：${input.style.avoidPhrases.join("、") || "无"}\n禁用套话：${bannedReplyPhrases.join("、")}`,
+    "像熟悉而可靠的朋友一样回应用户真正表达的意思：先回应具体处境或情绪，再继续对话。不要整句换词复述，不要用同一段安抚模板，也不要用连续追问代替回答。用户提出直接问题时，先回答问题。",
+    input.plan.primaryStrategy === "answer_requested_advice"
+      ? "## 用户明确请求观点或建议\n用户已经授权本轮给建议。先用一句话接住具体情绪或矛盾，然后直接给出一条清楚、有理由、可被拒绝的看法或方向。不要说‘先停在这里’、‘不急着给建议’或‘我不把它翻译成办法’，不要只复述，也不要把回答再次变成问题。可以承认不确定性，但不要替用户做决定。actionDraft 仍须为 null。"
+      : "",
     ["invite_one_small_action", "clarify_then_invite"].includes(input.plan.primaryStrategy)
       ? "## 切换邀请硬边界\n本轮只能询问用户是否愿意进入整理；禁止出现打开、写下、回复、先做、第一步或任何具体动作。actionDraft 必须为 null。"
       : "",

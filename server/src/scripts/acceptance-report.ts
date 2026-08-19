@@ -30,7 +30,7 @@ run("DeepSeek 低信号报告", ["run", "test:model:low-signal"]);
 run("DeepSeek 表达风格报告", ["run", "test:model:expression"]);
 
 const overall = results.every((result) => result.status === "passed") ? "通过" : "未通过";
-const report = `# 灵体水獭验收报告\n\n- 时间：${new Date().toISOString()}\n- 总体状态：**${overall}**\n- Node：${process.version}\n\n| 项目 | 状态 | 说明 |\n| --- | --- | --- |\n${results.map((result) => `| ${result.name} | ${result.status} | ${result.detail} |`).join("\n")}\n\n> 任一核心项目失败或 blocked 时，总体状态不得写为通过。\n`;
+const report = `# tata 验收报告\n\n- 时间：${new Date().toISOString()}\n- 总体状态：**${overall}**\n- Node：${process.version}\n\n| 项目 | 状态 | 说明 |\n| --- | --- | --- |\n${results.map((result) => `| ${result.name} | ${result.status} | ${result.detail} |`).join("\n")}\n\n> 任一核心项目失败或 blocked 时，总体状态不得写为通过。\n`;
 const outputDir = resolve(root, "test-results");
 mkdirSync(outputDir, { recursive: true });
 const output = resolve(outputDir, "acceptance-report.md");
