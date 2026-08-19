@@ -14,5 +14,6 @@ export function registerRuntimeRoute(app: FastifyInstance, env: AppEnv, gateway:
     sceneWorldV1Enabled: env.SCENE_WORLD_V1,
     audioV1Enabled: env.AUDIO_V1,
     cloudTtsEnabled: Boolean(env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_REGION),
+    memoryV2Enabled: env.MEMORY_V2,
   }));
 }

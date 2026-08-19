@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { MemoryCandidate } from "@otter/shared";
-import { filterMemoryCandidates, guardMemoryCandidate } from "../../src/modules/memory/guard.js";
+import type { MemoryCandidate, MemoryRelationCandidateV1 } from "@otter/shared";
+import { filterMemoryCandidates, guardMemoryCandidate, guardMemoryRelationCandidate } from "../../src/modules/memory/guard.js";
 
 const candidate = (overrides: Partial<MemoryCandidate> = {}): MemoryCandidate => ({
   kind: "user_preference",
@@ -54,5 +54,13 @@ describe("deterministic memory guard", () => {
       evidence,
     }));
     expect(filterMemoryCandidates(items, text)).toHaveLength(2);
+  });
+
+  it("allows only evidence-backed and high-confidence inferred relations", () => {
+    const relation: MemoryRelationCandidateV1 = { sourceKey: "episode.meeting", targetKey: "person.manager", type: "may_trigger", origin: "model_inference", confidence: 0.92, evidence: "和主管开会就紧张" };
+    expect(guardMemoryRelationCandidate(relation, "我一想到和主管开会就紧张").accepted).toBe(true);
+    expect(guardMemoryRelationCandidate({ ...relation, type: "involves" }, "我一想到和主管开会就紧张").reason).toBe("INFERENCE_RELATION_BLOCKED");
+    expect(guardMemoryRelationCandidate({ ...relation, confidence: 0.7 }, "我一想到和主管开会就紧张").reason).toBe("LOW_INFERENCE_SCORE");
+    expect(guardMemoryRelationCandidate(relation, "今天心情不错").reason).toBe("EVIDENCE_NOT_VERBATIM");
   });
 });

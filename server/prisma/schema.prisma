@@ -63,9 +63,34 @@ enum MemorySensitivity {
 
 enum MemoryStatus {
   active
+  disabled
+  rejected
   superseded
   expired
   deleted
+}
+
+enum MemoryClaimState {
+  asserted
+  hypothesis
+  confirmed
+}
+
+enum MemoryRelationType {
+  involves
+  may_trigger
+  supports
+  contradicts
+  updates
+  related_to
+  part_of
+}
+
+enum MemoryRelationStatus {
+  active
+  disabled
+  rejected
+  expired
 }
 
 model InviteCode {
@@ -96,6 +121,7 @@ model AnonymousUser {
   conversations             Conversation[]
   behaviorEvents            BehaviorEvent[]
   memoryItems               MemoryItem[]
+  memoryRelations           MemoryRelation[]
 
   @@index([expiresAt])
   @@map("anonymous_users")
@@ -300,14 +326,18 @@ model MemoryItem {
   sensitivity     MemorySensitivity
   importance      Float
   confidence      Float
+  claimState      MemoryClaimState @default(asserted)
   status          MemoryStatus      @default(active)
   observedAt      DateTime
+  eventAt         DateTime?
   validFrom       DateTime
+  validTo         DateTime?
+  reviewExpiresAt DateTime?
   expiresAt       DateTime
   supersedesId    String?
   recallCount     Int               @default(0)
   lastRecalledAt  DateTime?
-  schemaVersion   Int               @default(1)
+  schemaVersion   Int               @default(2)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   user            AnonymousUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -316,12 +346,46 @@ model MemoryItem {
   supersededBy    MemoryItem[]      @relation("MemorySupersession")
   evidence        MemoryEvidence[]
   revisions       MemoryRevision[]
+  outgoingRelations MemoryRelation[] @relation("MemoryRelationSource")
+  incomingRelations MemoryRelation[] @relation("MemoryRelationTarget")
 
   @@index([userId, status, expiresAt])
   @@index([userId, kind, structuredKey, status])
   @@index([conversationId, observedAt])
   @@index([contentHash])
   @@map("memory_items")
+}
+
+model MemoryRelation {
+  id                String               @id @default(cuid())
+  userId            String
+  sourceMemoryId    String
+  targetMemoryId    String
+  type              MemoryRelationType
+  origin            MemoryOrigin
+  claimState        MemoryClaimState
+  confidence        Float
+  status            MemoryRelationStatus @default(active)
+  evidence          String
+  fingerprintHash   String
+  observedAt        DateTime
+  validFrom         DateTime
+  validTo           DateTime?
+  reviewExpiresAt   DateTime?
+  presentedAt       DateTime?
+  presentationCount Int                 @default(0)
+  expiresAt         DateTime
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  user              AnonymousUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceMemory      MemoryItem            @relation("MemoryRelationSource", fields: [sourceMemoryId], references: [id], onDelete: Cascade)
+  targetMemory      MemoryItem            @relation("MemoryRelationTarget", fields: [targetMemoryId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, expiresAt])
+  @@index([sourceMemoryId, status])
+  @@index([targetMemoryId, status])
+  @@index([fingerprintHash])
+  @@map("memory_relations")
 }
 
 model MemoryEvidence {

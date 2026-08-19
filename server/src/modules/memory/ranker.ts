@@ -38,7 +38,8 @@ export function rankMemories(candidates: RecallCandidate[], query: string, now =
       const ageDays = Math.max(0, now.getTime() - item.observedAtDate.getTime()) / 86_400_000;
       const recency = Math.pow(0.5, ageDays / 7);
       const keyBoost = query.toLowerCase().includes(item.structuredKey.toLowerCase()) ? 0.2 : 0;
-      return Math.min(1, lexical * 0.4 + item.importance * 0.25 + recency * 0.2 + typePriority[item.kind] * 0.15 + keyBoost);
+      const claim = item.claimState === "confirmed" ? 1 : item.claimState === "hypothesis" ? 0.75 : 0.9;
+      return Math.min(1, lexical * 0.3 + item.importance * 0.2 + recency * 0.15 + typePriority[item.kind] * 0.15 + claim * 0.1 + 0.1 + keyBoost);
     };
     return score(right) - score(left);
   });

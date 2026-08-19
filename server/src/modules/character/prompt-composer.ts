@@ -31,7 +31,12 @@ export function composeCharacterPrompt(input: PromptComposerInput): { system: st
   }
   const spirit = spiritCards[input.plan.activeSpirit];
   const lore = selectLore(input.plan.activeSpirit, input.plan.sceneState).map((entry) => entry.content);
-  const memories = input.memories.map((memory) => `[MEMORY ${memory.kind}｜${memory.relevanceNote}｜${memory.observedAt}] ${memory.content} [/MEMORY]`);
+  const memories = input.memories.map((memory) => {
+    const trust = memory.claimState === "hypothesis" ? "未确认推测，只能用‘可能、是不是’表达且不得当作事实"
+      : memory.claimState === "confirmed" ? "用户已确认" : "用户明确表达";
+    const relation = memory.relationNote ? `；关系=${memory.relationNote}` : "";
+    return `[MEMORY ${memory.kind}｜${memory.relevanceNote}｜${trust}｜${memory.observedAt}${relation}] ${memory.content} [/MEMORY]`;
+  });
   const actions = [input.actionContext?.action ? `[已确认行动] ${input.actionContext.action}` : "", input.actionContext?.followup ? `[待处理回访] ${input.actionContext.followup}` : ""].filter(Boolean);
   const emotionSection = input.emotionHypothesis && input.emotionExpression
     ? `## 情绪承接（只调整表达，不改变风险、路由或行动授权）\n状态=${input.emotionExpression.status}；断言方式=${input.emotionExpression.assertionMode}；标签=${input.emotionExpression.primaryLabels.join("、") || "无"}\n${input.emotionExpression.instructions.join("\n")}\n避免：${input.emotionExpression.avoid.join("、")}\n证据：${input.emotionHypothesis.labels.flatMap((item) => item.evidenceSpans).join("、") || "无"}`

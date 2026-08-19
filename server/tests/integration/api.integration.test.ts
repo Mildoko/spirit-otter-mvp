@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadEnv, type AppEnv } from "../../src/config/env.js";
 import { hashSecret } from "../../src/utils.js";
-import { persistMemoryCandidates, recallMemories } from "../../src/modules/memory/repository.js";
+import { persistMemoryCandidates, persistMemoryGraph, recallMemories } from "../../src/modules/memory/repository.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const integration = describe.skipIf(!testDatabaseUrl);
@@ -36,6 +36,7 @@ integration("Postgres API integration", () => {
       LOCAL_TEST_MODE: "false",
       OTTER_RUNTIME_MODE: "full",
       AUDIO_V1: "true",
+      MEMORY_V2: "true",
     });
     db = new PrismaClient({ datasourceUrl: testDatabaseUrl });
     const { buildApp } = await import("../../src/app.js");
@@ -280,5 +281,34 @@ integration("Postgres API integration", () => {
     });
     expect(await recallMemories(db, first.id, "日历")).toEqual([]);
     expect(await recallMemories(db, second.id, "日历")).toHaveLength(1);
+  });
+
+  it("persists, manages and physically deletes a trusted memory graph", async () => {
+    const cookie = await redeem();
+    const bootstrap = await app.inject({ method: "GET", url: "/api/session/bootstrap", headers: { cookie } });
+    const conversationId = bootstrap.json().conversation.id as string;
+    const user = await db.anonymousUser.findFirstOrThrow();
+    const turn = await db.turn.create({ data: { conversationId, idempotencyKey: "memory-v2", status: "completed", expiresAt: new Date(Date.now() + 86_400_000) } });
+    const text = "主管表达很直接，明天和主管开会时我可能会紧张";
+    const message = await db.message.create({ data: { conversationId, turnId: turn.id, role: "user", content: text, expiresAt: new Date(Date.now() + 86_400_000) } });
+    const saved = await persistMemoryGraph(db, {
+      userId: user.id, conversationId, messageId: message.id, userText: text, memoryV2Enabled: true,
+      candidates: [
+        { kind: "user_fact", content: "主管表达很直接", structuredKey: "person.manager", origin: "user_explicit", sensitivity: "normal", importance: 0.9, confidence: 0.95, evidence: "主管表达很直接" },
+        { kind: "episode", content: "明天和主管开会时可能紧张", structuredKey: "event.manager_meeting", origin: "model_inference", sensitivity: "normal", importance: 0.9, confidence: 0.95, evidence: "明天和主管开会时我可能会紧张", eventTimeText: "明天" },
+      ],
+      relations: [{ sourceKey: "event.manager_meeting", targetKey: "person.manager", type: "may_trigger", origin: "model_inference", confidence: 0.95, evidence: "和主管开会时我可能会紧张" }],
+    });
+    expect(saved).toMatchObject({ memoryIds: [expect.any(String), expect.any(String)], relationIds: [expect.any(String)] });
+    const listed = await app.inject({ method: "GET", url: "/api/me/memories", headers: { cookie } });
+    expect(listed.json().items).toHaveLength(2);
+    const hypothesis = listed.json().items.find((item: { claimState: string }) => item.claimState === "hypothesis");
+    expect(hypothesis.eventAt).toBeTruthy();
+    expect((await app.inject({ method: "PATCH", url: `/api/me/memories/${hypothesis.id}`, headers: { cookie, origin: env.WEB_ORIGIN }, payload: { action: "confirm" } })).json().claimState).toBe("confirmed");
+    expect((await app.inject({ method: "PATCH", url: `/api/me/memory-relations/${saved.relationIds[0]}`, headers: { cookie, origin: env.WEB_ORIGIN }, payload: { action: "reject" } })).json().status).toBe("rejected");
+    const corrected = await app.inject({ method: "PATCH", url: `/api/me/memories/${hypothesis.id}`, headers: { cookie, origin: env.WEB_ORIGIN }, payload: { action: "correct", content: "后天和主管开会" } });
+    expect(corrected.json()).toMatchObject({ content: "后天和主管开会", claimState: "confirmed" });
+    expect((await app.inject({ method: "DELETE", url: `/api/me/memories/${corrected.json().id}`, headers: { cookie, origin: env.WEB_ORIGIN } })).statusCode).toBe(204);
+    expect(await db.memoryItem.findUnique({ where: { id: corrected.json().id } })).toBeNull();
   });
 });

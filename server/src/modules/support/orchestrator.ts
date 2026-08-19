@@ -5,6 +5,7 @@ import type {
   EmotionState,
   GuidanceStateV1,
   MemoryCandidate,
+  MemoryRelationCandidateV1,
   PromptMemory,
   RawSignals,
   ResponsePlan,
@@ -58,6 +59,7 @@ export interface OrchestratorResult {
   reply: string;
   actionDraft: string | null;
   memoryCandidates: MemoryCandidate[];
+  memoryRelationCandidates: MemoryRelationCandidateV1[];
   metrics: LlmMetrics[];
   signalSource: "cloud_model" | "local_fallback";
   responseSource: ResponseSource;
@@ -125,6 +127,7 @@ export class SupportOrchestrator {
         reply: finalReply,
         actionDraft: null,
         memoryCandidates: [],
+        memoryRelationCandidates: [],
         metrics: analyzed ? [analyzed.metrics] : [],
         signalSource: analyzed ? "cloud_model" : "local_fallback",
         responseSource: "static_safety",
@@ -149,7 +152,7 @@ export class SupportOrchestrator {
     });
     const [generated, extracted] = await Promise.all([
       this.gateway.generate(prompt),
-      this.gateway.extractMemories(input.text),
+      this.gateway.extractMemories(input.text, input.memories),
     ]);
     const fallback = fallbackReply({
       plan: routed.plan,
@@ -232,6 +235,7 @@ export class SupportOrchestrator {
       reply: finalReply,
       actionDraft: routed.plan.allowActionDraft ? (selected?.actionDraft ?? fallback.actionDraft) : null,
       memoryCandidates: filterMemoryCandidates(extracted?.memories ?? [], input.text),
+      memoryRelationCandidates: extracted?.relations ?? [],
       metrics: [analyzed?.metrics, generated?.metrics, repairMetric, extracted?.metrics].filter((metric): metric is LlmMetrics => Boolean(metric)),
       signalSource: analyzed ? "cloud_model" : "local_fallback",
       responseSource: selected ? "cloud_model" : "local_fallback",

@@ -28,6 +28,7 @@ describe("support orchestrator without cloud credentials", () => {
     expect(result.plan.sceneState).toBe("safety_plain");
     expect(result.actionDraft).toBeNull();
     expect(result.memoryCandidates).toEqual([]);
+    expect(result.memoryRelationCandidates).toEqual([]);
     expect(result.metrics).toEqual([]);
     expect(result.reply).toContain("现实");
     expect(result.reply).not.toContain("水面");

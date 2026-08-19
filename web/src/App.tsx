@@ -11,6 +11,7 @@ import { useAudio } from "./audio/AudioProvider";
 import { VoiceInputButton } from "./components/VoiceInputButton";
 import { buildWelcomeMessage, type WelcomeMessageV1 } from "./lib/welcome";
 import { mapTataExpression } from "./lib/otter-expression";
+import { MemoryCenter } from "./components/MemoryCenter";
 
 type Message = BootstrapData["messages"][number];
 type Action = BootstrapData["actions"][number];
@@ -36,6 +37,7 @@ export function App() {
   const [emotionFeedbackEnabled, setEmotionFeedbackEnabled] = useState(() => window.localStorage.getItem("otter-emotion-feedback") !== "off");
   const [lastSafetyTurn, setLastSafetyTurn] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [memoryCenterOpen, setMemoryCenterOpen] = useState(false);
   const [timeReminder, setTimeReminder] = useState(false);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -339,6 +341,10 @@ export function App() {
         <dl><div><dt>匿名研究编号</dt><dd>{bootstrap.researchId}</dd></div><div><dt>本地保存</dt><dd>对话及系统自动提取的可能重要信息，最长 30 天</dd></div><div><dt>云端处理</dt><dd>对话会发送给模型供应商；本地删除不控制其日志。</dd></div><div><dt>反馈、申诉或求助</dt><dd>{bootstrap.researchContact}</dd></div></dl>
         <label className="setting-toggle"><input type="checkbox" checked={emotionFeedbackEnabled} onChange={(event) => { const enabled = event.target.checked; setEmotionFeedbackEnabled(enabled); window.localStorage.setItem("otter-emotion-feedback", enabled ? "on" : "off"); if (!enabled) { setEmotionFeedback(undefined); setEmotionInterpretation(undefined); } }} /><span>显示情绪变化与 tata 的理解</span></label>
         <p className="settings-footnote">情绪提示只是 AI 对这一刻的暂时理解，可能不准确。</p>
+        {runtime?.memoryV2Enabled && <section className="memory-settings-entry" aria-labelledby="memory-settings-title">
+          <div><h3 id="memory-settings-title">tata 记得的我</h3><p>查看 tata 留下的事实、经历和关系推测，并随时纠正或删除。</p></div>
+          <button className="secondary-button" onClick={() => { setSettingsOpen(false); setMemoryCenterOpen(true); }}>查看和管理记忆</button>
+        </section>}
         {runtime?.audioV1Enabled && <section className="audio-settings" aria-labelledby="audio-settings-title">
           <h3 id="audio-settings-title">声音</h3>
           <label className="setting-toggle"><input type="checkbox" checked={audio.settings.masterEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, masterEnabled: event.target.checked })} /><span>声音总开关</span></label>
@@ -358,6 +364,7 @@ export function App() {
         <button className="danger-button" onClick={async () => { if (window.confirm("确定永久删除本地全部对话、记忆、行动和回访吗？")) { await api.deleteMe(); window.location.reload(); } }}>永久删除本地数据</button>
         <p className="settings-footnote">本产品不是医疗或心理诊断服务。你可以随时关闭页面，不需要向角色解释。</p>
       </section></div>}
+      {memoryCenterOpen && <MemoryCenter onClose={() => { setMemoryCenterOpen(false); settingsButtonRef.current?.focus(); }} />}
     </main>
   );
 }

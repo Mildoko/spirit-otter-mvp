@@ -224,7 +224,10 @@ export interface PublicFollowup {
 export type MemoryKind = "user_fact" | "user_preference" | "boundary" | "episode" | "relationship_milestone" | "support_strategy";
 export type MemoryOrigin = "user_explicit" | "model_inference";
 export type MemorySensitivity = "normal" | "personal" | "sensitive" | "highly_sensitive";
-export type MemoryStatus = "active" | "superseded" | "expired" | "deleted";
+export type MemoryStatus = "active" | "disabled" | "rejected" | "superseded" | "expired" | "deleted";
+export type MemoryClaimStateV2 = "asserted" | "hypothesis" | "confirmed";
+export type MemoryRelationTypeV1 = "involves" | "may_trigger" | "supports" | "contradicts" | "updates" | "related_to" | "part_of";
+export type MemoryRelationStatusV1 = "active" | "disabled" | "rejected" | "expired";
 
 export interface MemoryCandidate {
   kind: MemoryKind;
@@ -236,6 +239,21 @@ export interface MemoryCandidate {
   importance: number;
   confidence: number;
   evidence: string;
+  eventTimeText?: string;
+}
+
+export interface MemoryRelationCandidateV1 {
+  sourceKey: string;
+  targetKey: string;
+  type: MemoryRelationTypeV1;
+  origin: MemoryOrigin;
+  confidence: number;
+  evidence: string;
+}
+
+export interface MemoryExtractionV2 {
+  memories: MemoryCandidate[];
+  relations: MemoryRelationCandidateV1[];
 }
 
 export interface PromptMemory {
@@ -244,7 +262,59 @@ export interface PromptMemory {
   content: string;
   observedAt: string;
   relevanceNote: "current_preference" | "historical_event" | "relationship_context";
+  structuredKey?: string;
+  claimState?: MemoryClaimStateV2;
+  relationNote?: string;
+  relationId?: string;
 }
+
+export interface PublicMemoryEvidenceV2 {
+  excerpt: string;
+  capturedAt: string;
+}
+
+export interface PublicMemoryRelationV1 {
+  id: string;
+  type: MemoryRelationTypeV1;
+  sourceMemoryId: string;
+  targetMemoryId: string;
+  sourceContent: string;
+  targetContent: string;
+  claimState: MemoryClaimStateV2;
+  status: MemoryRelationStatusV1;
+  confidence: number;
+  observedAt: string;
+}
+
+export interface PublicMemoryV2 {
+  schemaVersion: 2;
+  id: string;
+  kind: MemoryKind;
+  content: string;
+  structuredValue?: string;
+  claimState: MemoryClaimStateV2;
+  status: MemoryStatus;
+  observedAt: string;
+  eventAt?: string;
+  validFrom: string;
+  validTo?: string;
+  evidence: PublicMemoryEvidenceV2[];
+  relations: PublicMemoryRelationV1[];
+}
+
+export interface PublicMemoryPageV2 {
+  items: PublicMemoryV2[];
+  nextCursor?: string | undefined;
+}
+
+export type MemoryDecisionV2 =
+  | { action: "confirm" }
+  | { action: "disable" }
+  | { action: "enable" }
+  | { action: "reject" }
+  | { action: "correct"; content: string; structuredValue?: string | undefined };
+
+export type MemoryRelationDecisionV1 = { action: "confirm" | "disable" | "enable" | "reject" };
 
 export interface PublicEmotionCue {
   dimension: "valence" | "arousal" | "stress" | "overload" | "support";
@@ -302,6 +372,7 @@ export interface RuntimeInfo {
   sceneWorldV1Enabled: boolean;
   audioV1Enabled: boolean;
   cloudTtsEnabled: boolean;
+  memoryV2Enabled: boolean;
 }
 
 export interface PublicEmotionFeedback {

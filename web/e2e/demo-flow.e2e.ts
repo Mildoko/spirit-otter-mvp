@@ -183,3 +183,43 @@ test("语音输入只填入独立输入栏，用户确认后才发送", async ({
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.locator(".message-user").last()).toContainText("我想用语音和 tata 说说话");
 });
+
+test("用户可以查看、确认、纠正、停用和删除 tata 的记忆", async ({ page }) => {
+  const relation = { id: "relation-1", type: "may_trigger", sourceMemoryId: "memory-1", targetMemoryId: "memory-2", sourceContent: "明天和主管开会", targetContent: "主管表达很直接", claimState: "hypothesis", status: "active", confidence: 0.94, observedAt: new Date().toISOString() };
+  let memories = [
+    { schemaVersion: 2, id: "memory-1", kind: "episode", content: "明天和主管开会", claimState: "hypothesis", status: "active", observedAt: new Date().toISOString(), eventAt: new Date(Date.now() + 86_400_000).toISOString(), validFrom: new Date().toISOString(), evidence: [{ excerpt: "明天和主管开会", capturedAt: new Date().toISOString() }], relations: [relation] },
+    { schemaVersion: 2, id: "memory-2", kind: "user_fact", content: "主管表达很直接", claimState: "asserted", status: "active", observedAt: new Date().toISOString(), validFrom: new Date().toISOString(), evidence: [{ excerpt: "主管表达很直接", capturedAt: new Date().toISOString() }], relations: [relation] },
+  ];
+  await page.route("**/api/me/memories**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: memories }) });
+    const id = request.url().split("/").at(-1)!;
+    if (request.method() === "DELETE") { memories = memories.filter((memory) => memory.id !== id); return route.fulfill({ status: 204 }); }
+    const body = request.postDataJSON() as { action: string; content?: string };
+    const memory = memories.find((item) => item.id === id)!;
+    if (body.action === "confirm") memory.claimState = "confirmed";
+    if (body.action === "disable") memory.status = "disabled";
+    if (body.action === "correct" && body.content) memory.content = body.content;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(memory) });
+  });
+  await page.route("**/api/me/memory-relations/*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...relation, status: "rejected" }) }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: "查看和管理记忆" }).click();
+  const center = page.getByRole("dialog", { name: "tata 记得的我" });
+  await expect(center).toContainText("tata 的推测");
+  await expect(center).toContainText("待确认关系");
+  await center.getByRole("button", { name: "这是准确的" }).click();
+  await expect(center).toContainText("你已确认");
+  const firstCard = center.locator(".memory-card").first();
+  await firstCard.getByRole("button", { name: "纠正" }).click();
+  await page.getByRole("textbox", { name: "纠正后的记忆" }).fill("后天和主管开会");
+  await page.getByRole("button", { name: "保存纠正" }).click();
+  await expect(center).toContainText("后天和主管开会");
+  await firstCard.getByRole("button", { name: "暂不使用" }).click();
+  await page.getByRole("button", { name: "已停用" }).click();
+  await expect(center).toContainText("后天和主管开会");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await center.getByRole("button", { name: "删除", exact: true }).first().click();
+  await expect(center.locator(".memory-card")).toHaveCount(1);
+});

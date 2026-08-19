@@ -14,7 +14,7 @@ import type { SupportOrchestrator } from "../modules/support/orchestrator.js";
 import { buildPublicEmotionFeedback } from "../modules/support/emotion-feedback.js";
 import { emotionStateSchema } from "../modules/support/schemas.js";
 import { parseGuidanceState } from "../modules/support/guidance-state.js";
-import { markMemoriesRecalled, persistMemoryCandidates, recallMemories } from "../modules/memory/repository.js";
+import { markMemoriesRecalled, markMemoryRelationsPresented, persistMemoryCandidates, recallMemories } from "../modules/memory/repository.js";
 
 const turnSchema = z.object({
   conversationId: z.string().min(1),
@@ -123,7 +123,7 @@ export function registerChatRoutes(
             rawStateJson: true,
           },
         }),
-        recallMemories(db, auth.userId, body.text, now),
+        recallMemories(db, auth.userId, body.text, now, env.MEMORY_V2),
         db.actionItem.findFirst({
           where: { conversationId: conversation.id, status: { in: ["confirmed", "deferred"] } },
           orderBy: { updatedAt: "desc" },
@@ -229,9 +229,12 @@ export function registerChatRoutes(
             messageId: userMessage.id,
             userText: body.text,
             candidates: result.memoryCandidates,
+            relations: result.memoryRelationCandidates,
+            memoryV2Enabled: env.MEMORY_V2,
             now,
           });
           await markMemoriesRecalled(tx, memories.map((memory) => memory.id), now);
+          await markMemoryRelationsPresented(tx, memories.flatMap((memory) => memory.relationId ? [memory.relationId] : []), now);
         }
 
         const isSafety = result.riskLevel === "high" || result.riskLevel === "imminent";

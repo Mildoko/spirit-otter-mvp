@@ -37,6 +37,8 @@
     ,"test:emotion": "node dist/scripts/emotion-evaluation.js --validate-only"
     ,"test:model:emotion": "node dist/scripts/emotion-evaluation.js --model"
     ,"report:emotion": "node dist/scripts/emotion-evaluation.js && node dist/scripts/emotion-expression-report.js"
+    ,"test:memory": "node dist/scripts/memory-evaluation.js"
+    ,"test:model:memory": "node dist/scripts/memory-evaluation.js --model"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

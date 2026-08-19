@@ -2,16 +2,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { loadEnv } from "../../src/config/env.js";
+import { DemoStore } from "../../src/demo/store.js";
 
 describe("demo mode API contract", () => {
   let app: FastifyInstance;
+  let store: DemoStore;
   beforeEach(async () => {
     const env = loadEnv({
       NODE_ENV: "test", OTTER_RUNTIME_MODE: "demo", DATABASE_URL: "postgresql://unused/unused",
       SESSION_SECRET: "demo-test-secret-with-more-than-thirty-two-characters", COOKIE_SECURE: "false",
       WEB_ORIGIN: "http://localhost:3001", LLM_API_KEY: "", BUILD_VERSION: "test-version",
     });
-    app = await buildApp(env);
+    store = new DemoStore();
+    app = await buildApp(env, undefined, { demoStore: store });
     await app.ready();
   });
   afterEach(async () => app.close());
@@ -72,8 +75,25 @@ describe("demo mode API contract", () => {
 
   it("exposes safe runtime metadata", async () => {
     expect((await app.inject({ method: "GET", url: "/api/runtime" })).json()).toEqual({
-      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: true, sceneWorldV1Enabled: true, audioV1Enabled: true, cloudTtsEnabled: false,
+      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: true, sceneWorldV1Enabled: true, audioV1Enabled: true, cloudTtsEnabled: false, memoryV2Enabled: true,
     });
+  });
+
+  it("lists and controls trusted memories and relations", async () => {
+    store.persistMemories([
+      { kind: "episode", content: "明天要和主管开会", structuredKey: "event.meeting", origin: "user_explicit", sensitivity: "normal", importance: 0.9, confidence: 0.95, evidence: "明天要和主管开会", eventTimeText: "明天" },
+      { kind: "user_fact", content: "主管表达很直接", structuredKey: "person.manager", origin: "user_explicit", sensitivity: "normal", importance: 0.9, confidence: 0.95, evidence: "主管表达很直接" },
+    ], [{ sourceKey: "event.meeting", targetKey: "person.manager", type: "may_trigger", origin: "model_inference", confidence: 0.95, evidence: "和主管开会" }], "主管表达很直接，明天要和主管开会", true);
+    const listed = await app.inject({ method: "GET", url: "/api/me/memories" });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().items).toHaveLength(2);
+    const memory = listed.json().items[0];
+    const confirmed = await app.inject({ method: "PATCH", url: `/api/me/memories/${memory.id}`, payload: { action: "confirm" } });
+    expect(confirmed.json().claimState).toBe("confirmed");
+    const relation = listed.json().items.flatMap((item: { relations: Array<{ id: string }> }) => item.relations)[0];
+    const rejected = await app.inject({ method: "PATCH", url: `/api/me/memory-relations/${relation.id}`, payload: { action: "reject" } });
+    expect(rejected.json().status).toBe("rejected");
+    expect((await app.inject({ method: "DELETE", url: `/api/me/memories/${memory.id}` })).statusCode).toBe(204);
   });
 
   it("keeps emotion corrections in the browser session, applies them once, and exports them only on request", async () => {

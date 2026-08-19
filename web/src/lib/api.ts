@@ -1,4 +1,4 @@
-import type { CharacterDiagnostics, ChatTurnResponse, EmotionCorrectionLabelV1, EmotionCorrectionV1, EmotionState, PublicEmotionFeedback, PublicEmotionInterpretation, RawSignals, ResponsePlan, RiskLevel, RuntimeInfo } from "@otter/shared";
+import type { CharacterDiagnostics, ChatTurnResponse, EmotionCorrectionLabelV1, EmotionCorrectionV1, EmotionState, MemoryDecisionV2, MemoryRelationDecisionV1, MemoryStatus, PublicEmotionFeedback, PublicEmotionInterpretation, PublicMemoryPageV2, PublicMemoryRelationV1, PublicMemoryV2, RawSignals, ResponsePlan, RiskLevel, RuntimeInfo } from "@otter/shared";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -90,6 +90,11 @@ export const api = {
   createFollowup: (actionId: string, dueAt: string) => request("/followups", { method: "POST", body: JSON.stringify({ actionId, dueAt, authorized: true }) }),
   updateFollowup: (id: string, status: "completed" | "deferred" | "closed" | "deleted") => request(`/followups/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   requestHelp: (turnId: string) => request<{ requested: boolean; contact: string }>(`/safety-events/${turnId}/request-help`, { method: "POST", body: "{}" }),
+  memories: (status?: MemoryStatus) => request<PublicMemoryPageV2>(`/me/memories${status ? `?status=${status}` : ""}`),
+  decideMemory: (id: string, decision: MemoryDecisionV2) => request<PublicMemoryV2>(`/me/memories/${id}`, { method: "PATCH", body: JSON.stringify(decision) }),
+  deleteMemory: (id: string) => request<void>(`/me/memories/${id}`, { method: "DELETE" }),
+  decideMemoryRelation: (id: string, decision: MemoryRelationDecisionV1) => request<PublicMemoryRelationV1>(`/me/memory-relations/${id}`, { method: "PATCH", body: JSON.stringify(decision) }),
+  deleteMemoryRelation: (id: string) => request<void>(`/me/memory-relations/${id}`, { method: "DELETE" }),
   logout: () => request<void>("/auth/logout", { method: "POST", body: "{}" }),
   deleteMe: () => request<void>("/me/data", { method: "DELETE" }),
   exportMe: async () => {

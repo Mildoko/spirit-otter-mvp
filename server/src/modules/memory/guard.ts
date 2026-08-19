@@ -1,4 +1,4 @@
-import type { MemoryCandidate } from "@otter/shared";
+import type { MemoryCandidate, MemoryRelationCandidateV1 } from "@otter/shared";
 
 const forbiddenPatterns = [
   /(?:抑郁症|焦虑症|双相|人格障碍|精神病|确诊|诊断为|治疗方案)/i,
@@ -30,4 +30,23 @@ export function guardMemoryCandidate(candidate: MemoryCandidate, userText: strin
 
 export function filterMemoryCandidates(candidates: MemoryCandidate[], userText: string): MemoryCandidate[] {
   return candidates.filter((candidate) => guardMemoryCandidate(candidate, userText).accepted).slice(0, 2);
+}
+
+const inferredRelationTypes = new Set<MemoryRelationCandidateV1["type"]>(["may_trigger", "related_to"]);
+
+export function guardMemoryRelationCandidate(candidate: MemoryRelationCandidateV1, userText: string): GuardResult {
+  if (candidate.sourceKey === candidate.targetKey) return { accepted: false, reason: "SELF_RELATION" };
+  if (!userText.includes(candidate.evidence)) return { accepted: false, reason: "EVIDENCE_NOT_VERBATIM" };
+  if (forbiddenPatterns.some((pattern) => pattern.test(candidate.evidence))) return { accepted: false, reason: "FORBIDDEN_CONTENT" };
+  if (candidate.origin === "model_inference") {
+    if (!inferredRelationTypes.has(candidate.type)) return { accepted: false, reason: "INFERENCE_RELATION_BLOCKED" };
+    if (candidate.confidence < 0.9) return { accepted: false, reason: "LOW_INFERENCE_SCORE" };
+  } else if (candidate.confidence < 0.8) {
+    return { accepted: false, reason: "LOW_SCORE" };
+  }
+  return { accepted: true };
+}
+
+export function filterMemoryRelationCandidates(candidates: MemoryRelationCandidateV1[], userText: string): MemoryRelationCandidateV1[] {
+  return candidates.filter((candidate) => guardMemoryRelationCandidate(candidate, userText).accepted).slice(0, 2);
 }

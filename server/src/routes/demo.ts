@@ -36,6 +36,12 @@ const correctionSchema = z.object({
   if (value.verdict !== "replace" && value.labels.length > 0) context.addIssue({ code: "custom", path: ["labels"], message: "只有 replace 可以携带标签" });
 });
 const dimensions = ["valence", "arousal", "stressLoad", "cognitiveOverload", "supportNeed"] as const;
+const memoryStatusSchema = z.enum(["active", "disabled", "rejected", "superseded", "expired", "deleted"]);
+const memoryDecisionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.enum(["confirm", "disable", "enable", "reject"]) }).strict(),
+  z.object({ action: z.literal("correct"), content: z.string().trim().min(3).max(240), structuredValue: z.string().trim().max(160).optional() }).strict(),
+]);
+const relationDecisionSchema = z.object({ action: z.enum(["confirm", "disable", "enable", "reject"]) }).strict();
 const pickState = (state: EmotionState) => Object.fromEntries(dimensions.map((key) => [key, state[key]])) as Pick<EmotionState, typeof dimensions[number]>;
 
 export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrator: Pick<SupportOrchestrator, "run">, store: DemoStore): void {
@@ -90,7 +96,7 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
     const recentContext = store.messages.slice(-12).map((message) => `${message.role}: ${message.content}`);
     const userMessage = store.addMessage("user", body.text);
     const previous = store.states.at(-1)?.smoothed;
-    const memories = store.recallMemories(body.text);
+    const memories = store.recallMemories(body.text, env.MEMORY_V2);
     const actionContext = store.actions.find((item) => ["confirmed", "deferred"].includes(item.status));
     const followupContext = store.followups.find((item) => ["pending", "deferred"].includes(item.status));
     const previousEmotionCorrection = store.getPendingEmotionCorrection();
@@ -121,7 +127,7 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
     if (env.EMOTION_INFERENCE_V2) store.recordEmotion(turnId, result.emotionHypothesis, result.riskLevel === "low");
     const isSafety = result.riskLevel === "high" || result.riskLevel === "imminent";
     if (isSafety) store.markSafetyTurn(turnId);
-    else store.persistMemories(result.memoryCandidates);
+    else { store.persistMemories(result.memoryCandidates, result.memoryRelationCandidates, body.text, env.MEMORY_V2); store.markRelationsPresented(memories); }
     const action = result.actionDraft ? store.createAction(result.actionDraft) : null;
     const changes = Object.fromEntries(dimensions.map((key) => [key, result.state[key] - (previous?.[key] ?? result.state[key])])) as EmotionDiagnostics["changes"];
     const diagnostics: EmotionDiagnostics = {
@@ -212,6 +218,36 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
       memories: store.exportMemories(),
       emotionRecords: store.exportEmotionRecords(),
     };
+  });
+  app.get("/api/me/memories", async (request) => {
+    const store = storeFor(request);
+    const query = z.object({ status: memoryStatusSchema.optional(), cursor: z.string().optional(), limit: z.coerce.number().int().min(1).max(50).default(30) }).parse(request.query);
+    const all = store.listMemories(query.status);
+    const start = query.cursor ? Math.max(0, all.findIndex((memory) => memory.id === query.cursor) + 1) : 0;
+    const items = all.slice(start, start + query.limit);
+    return { items, ...(start + query.limit < all.length ? { nextCursor: items.at(-1)?.id } : {}) };
+  });
+  app.patch("/api/me/memories/:id", async (request) => {
+    const store = storeFor(request);
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    return store.decideMemory(id, memoryDecisionSchema.parse(request.body));
+  });
+  app.delete("/api/me/memories/:id", async (request, reply) => {
+    const store = storeFor(request);
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    store.deleteMemory(id);
+    return reply.code(204).send();
+  });
+  app.patch("/api/me/memory-relations/:id", async (request) => {
+    const store = storeFor(request);
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    return store.decideRelation(id, relationDecisionSchema.parse(request.body));
+  });
+  app.delete("/api/me/memory-relations/:id", async (request, reply) => {
+    const store = storeFor(request);
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    store.deleteRelation(id);
+    return reply.code(204).send();
   });
   app.post("/api/auth/logout", async (request, reply) => {
     const store = storeFor(request);

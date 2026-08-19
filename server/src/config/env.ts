@@ -38,6 +38,7 @@ const envSchema = z.object({
   EMOTION_INFERENCE_V2: booleanFromStringDefaultFalse,
   SCENE_WORLD_V1: booleanFromStringDefaultFalse,
   AUDIO_V1: booleanFromStringDefaultFalse,
+  MEMORY_V2: booleanFromStringDefaultFalse,
   AZURE_SPEECH_KEY: z.string().default(""),
   AZURE_SPEECH_REGION: z.string().default(""),
   AZURE_SPEECH_VOICE: z.string().default("zh-CN-XiaoxiaoNeural"),
@@ -62,6 +63,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   }
   if (normalized.AUDIO_V1 === undefined) {
     normalized.AUDIO_V1 = normalized.OTTER_RUNTIME_MODE === "demo" ? "true" : "false";
+  }
+  if (normalized.MEMORY_V2 === undefined) {
+    normalized.MEMORY_V2 = normalized.OTTER_RUNTIME_MODE === "full" || normalized.OTTER_RUNTIME_MODE === undefined ? "false" : "true";
   }
   const result = envSchema.safeParse(normalized);
   if (!result.success) {

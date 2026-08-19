@@ -33,6 +33,13 @@ describe("runtime mode environment", () => {
     expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "demo", AUDIO_V1: "false" }).AUDIO_V1).toBe(false);
   });
 
+  it("keeps memory v2 off in full and on in demo/lab unless explicitly overridden", () => {
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "full" }).MEMORY_V2).toBe(false);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "demo" }).MEMORY_V2).toBe(true);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "lab" }).MEMORY_V2).toBe(true);
+    expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "demo", MEMORY_V2: "false" }).MEMORY_V2).toBe(false);
+  });
+
   it("maps legacy local test mode to lab", () => {
     expect(loadEnv({ ...base, LOCAL_TEST_MODE: "true" }).OTTER_RUNTIME_MODE).toBe("lab");
   });

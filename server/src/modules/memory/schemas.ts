@@ -10,8 +10,19 @@ export const memoryCandidateSchema = z.object({
   importance: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
   evidence: z.string().trim().min(1).max(120),
+  eventTimeText: z.string().trim().min(1).max(40).optional(),
+});
+
+export const memoryRelationCandidateSchema = z.object({
+  sourceKey: z.string().trim().min(2).max(80).regex(/^[a-z0-9_.-]+$/),
+  targetKey: z.string().trim().min(2).max(80).regex(/^[a-z0-9_.-]+$/),
+  type: z.enum(["involves", "may_trigger", "supports", "contradicts", "updates", "related_to", "part_of"]),
+  origin: z.enum(["user_explicit", "model_inference"]),
+  confidence: z.number().min(0).max(1),
+  evidence: z.string().trim().min(1).max(120),
 });
 
 export const memoryExtractionSchema = z.object({
   memories: z.array(memoryCandidateSchema).max(2),
+  relations: z.array(memoryRelationCandidateSchema).max(2).default([]),
 });
