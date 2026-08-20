@@ -46,6 +46,16 @@ describe("demo mode API contract", () => {
     const actionId = actionTurn.json().action.id as string;
     const confirmed = await app.inject({ method: "POST", url: `/api/actions/${actionId}/confirm`, payload: { decision: "confirm", text: "写汇报标题" } });
     expect(confirmed.json().status).toBe("confirmed");
+    const followup = await app.inject({
+      method: "POST", url: "/api/followups",
+      payload: { actionId, dueAt: new Date(Date.now() + 60_000).toISOString(), authorized: true },
+    });
+    expect(followup.json()).toMatchObject({ outcomeState: "not_started", outcomeLabeledAt: null });
+    const outcome = await app.inject({
+      method: "POST", url: `/api/followups/${followup.json().id}/outcome`,
+      payload: { state: "blocked", source: "ui_select" },
+    });
+    expect(outcome.json()).toMatchObject({ outcomeState: "blocked", status: "closed" });
   });
 
   it("rejects the removed intent field", async () => {

@@ -2,10 +2,11 @@ import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import type { AppEnv } from "../config/env.js";
 import { requireAuth } from "../services/session-service.js";
-import { logBehavior } from "../services/behavior-service.js";
+import { logCoreDialogueEvent } from "../services/behavior-service.js";
 import { RECORD_DAYS } from "../config/constants.js";
 import { addDays } from "../utils.js";
 import { randomUUID } from "node:crypto";
+import { followupReentryBucket } from "../events/core-dialogue-events.js";
 
 export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
   app.get("/api/session/bootstrap", async (request) => {
@@ -35,7 +36,16 @@ export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, en
           data: { shownAt: new Date() },
         });
         for (const item of followups.filter((entry) => !entry.shownAt)) {
-          await logBehavior(tx, auth.userId, "followup_shown", { followupId: item.id });
+          await logCoreDialogueEvent(tx, auth.userId, {
+            eventName: "followup_reentered",
+            eventKey: `followup:${item.id}:followup_reentered`,
+            metadata: {
+              sessionId: auth.sessionId,
+              conversationId: conversation.id,
+              followupId: item.id,
+              reentryAfterDueHoursBucket: followupReentryBucket(Date.now() - item.dueAt.getTime()),
+            },
+          });
         }
       });
     }
@@ -62,6 +72,8 @@ export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, en
         actionId: item.actionId,
         dueAt: item.dueAt.toISOString(),
         status: item.status,
+        outcomeState: item.outcomeState,
+        outcomeLabeledAt: item.outcomeLabeledAt?.toISOString() ?? null,
         action: { ...item.action, createdAt: item.action.createdAt.toISOString() },
       })),
     };

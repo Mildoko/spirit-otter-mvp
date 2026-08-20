@@ -8,13 +8,14 @@ import { buildAudioCue } from "../modules/support/audio-cue.js";
 import type { AppEnv } from "../config/env.js";
 import { POLICY_VERSION, PROMPT_VERSION, RECORD_DAYS } from "../config/constants.js";
 import { requireAuth } from "../services/session-service.js";
-import { logBehavior } from "../services/behavior-service.js";
+import { logCoreDialogueEvent, logCoreDialogueEvents } from "../services/behavior-service.js";
 import { addDays } from "../utils.js";
 import type { SupportOrchestrator } from "../modules/support/orchestrator.js";
 import { buildPublicEmotionFeedback } from "../modules/support/emotion-feedback.js";
 import { emotionStateSchema } from "../modules/support/schemas.js";
 import { parseGuidanceState } from "../modules/support/guidance-state.js";
 import { markMemoriesRecalled, markMemoryRelationsPresented, persistMemoryCandidates, recallMemories } from "../modules/memory/repository.js";
+import { buildCompletedTurnEvents, buildUserTurnSubmittedEvent } from "../events/turn-events.js";
 
 const turnSchema = z.object({
   conversationId: z.string().min(1),
@@ -139,6 +140,14 @@ export function registerChatRoutes(
         return parsed.success ? parsed.data : snapshotState(snapshot);
       });
       const previousSmoothedState = previousSnapshots[0] ? snapshotState(previousSnapshots[0]) : undefined;
+      await logCoreDialogueEvent(db, auth.userId, buildUserTurnSubmittedEvent({
+        sessionId: auth.sessionId,
+        conversationId: conversation.id,
+        turnId,
+        messageLength: body.text.length,
+        hasFollowupContext: Boolean(followup),
+        hasConfirmedActionContext: Boolean(action),
+      }));
       const result = await orchestrator.run({
         text: body.text,
         currentSpirit: conversation.activeSpirit,
@@ -280,12 +289,14 @@ export function registerChatRoutes(
             guidanceStateJson: JSON.parse(JSON.stringify(result.nextGuidanceState)) as Prisma.InputJsonValue,
           },
         });
-        await logBehavior(tx, auth.userId, "turn_completed", {
-          spirit: result.plan.activeSpirit,
-          transition: result.plan.transitionStyle,
-          risk: result.riskLevel,
-        }, latencyMs);
-        if (createdAction) await logBehavior(tx, auth.userId, "action_draft_created", { actionId: createdAction.id });
+        await logCoreDialogueEvents(tx, auth.userId, buildCompletedTurnEvents({
+          sessionId: auth.sessionId,
+          conversationId: conversation.id,
+          turnId,
+          result,
+          action: createdAction,
+          durationMs: latencyMs,
+        }));
         return publicResult;
       });
       return response;
@@ -296,7 +307,11 @@ export function registerChatRoutes(
           where: { id: conversation.id, processingTurnId: turnId },
           data: { processingTurnId: null },
         });
-        await logBehavior(tx, auth.userId, "turn_failed");
+        await logCoreDialogueEvent(tx, auth.userId, {
+          eventName: "turn_failed",
+          eventKey: `turn:${turnId}:turn_failed`,
+          metadata: { sessionId: auth.sessionId, conversationId: conversation.id, turnId, failureStage: "unknown" },
+        });
       });
       throw error;
     }

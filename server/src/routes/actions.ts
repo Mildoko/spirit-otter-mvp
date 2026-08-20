@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import { RECORD_DAYS } from "../config/constants.js";
 import { requireAuth } from "../services/session-service.js";
-import { logBehavior } from "../services/behavior-service.js";
+import { logCoreDialogueEvent } from "../services/behavior-service.js";
 import { addDays } from "../utils.js";
 
 const idParams = z.object({ id: z.string() });
@@ -30,7 +30,27 @@ export function registerActionRoutes(app: FastifyInstance, db: PrismaClient, env
           ? { status: "confirmed", confirmedAt: new Date(), text: body.text ?? action.text, expiresAt: addDays(new Date(), RECORD_DAYS) }
           : { status: "deleted", expiresAt: addDays(new Date(), RECORD_DAYS) },
       });
-      await logBehavior(tx, auth.userId, body.decision === "confirm" ? "action_confirmed" : "action_deleted", { actionId: id });
+      if (body.decision === "confirm") {
+        const edited = Boolean(body.text && body.text !== action.text);
+        if (edited) {
+          await logCoreDialogueEvent(tx, auth.userId, {
+            eventName: "action_edited",
+            eventKey: `action:${id}:action_edited:user_confirm`,
+            metadata: { sessionId: auth.sessionId, conversationId: action.conversationId, actionId: id, editedBy: "user", editReason: "rewrite" },
+          });
+        }
+        await logCoreDialogueEvent(tx, auth.userId, {
+          eventName: "action_confirmed",
+          eventKey: `action:${id}:action_confirmed`,
+          metadata: { sessionId: auth.sessionId, conversationId: action.conversationId, actionId: id, confirmationType: "ui_confirm", edited },
+        });
+      } else {
+        await logCoreDialogueEvent(tx, auth.userId, {
+          eventName: "action_deleted",
+          eventKey: `action:${id}:action_deleted`,
+          metadata: { sessionId: auth.sessionId, conversationId: action.conversationId, actionId: id, deleteReason: "user_delete" },
+        });
+      }
       return item;
     });
     return { ...updated, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() };
@@ -53,7 +73,22 @@ export function registerActionRoutes(app: FastifyInstance, db: PrismaClient, env
           expiresAt: addDays(new Date(), RECORD_DAYS),
         },
       });
-      await logBehavior(tx, auth.userId, `action_${status}`, { actionId: id });
+      if (status === "completed") {
+        await logCoreDialogueEvent(tx, auth.userId, {
+          eventName: "action_completed", eventKey: `action:${id}:action_completed`,
+          metadata: { sessionId: auth.sessionId, conversationId: action.conversationId, actionId: id },
+        });
+      } else if (status === "deferred") {
+        await logCoreDialogueEvent(tx, auth.userId, {
+          eventName: "action_deferred", eventKey: `action:${id}:action_deferred`,
+          metadata: { sessionId: auth.sessionId, conversationId: action.conversationId, actionId: id },
+        });
+      } else {
+        await logCoreDialogueEvent(tx, auth.userId, {
+          eventName: "action_deleted", eventKey: `action:${id}:action_deleted`,
+          metadata: { sessionId: auth.sessionId, conversationId: action.conversationId, actionId: id, deleteReason: "user_delete" },
+        });
+      }
       return item;
     });
     return { ...updated, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() };

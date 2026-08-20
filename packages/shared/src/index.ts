@@ -218,6 +218,8 @@ export interface PublicFollowup {
   actionId: string;
   dueAt: string;
   status: "pending" | "completed" | "deferred" | "closed" | "deleted";
+  outcomeState: "not_started" | "partial_progress" | "completed" | "blocked" | "redefined";
+  outcomeLabeledAt?: string | null;
   action: PublicActionItem;
 }
 

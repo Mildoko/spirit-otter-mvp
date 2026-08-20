@@ -16,6 +16,14 @@ import { MemoryCenter } from "./components/MemoryCenter";
 type Message = BootstrapData["messages"][number];
 type Action = BootstrapData["actions"][number];
 
+const followupOutcomeOptions = [
+  { state: "not_started", label: "还没开始", notice: "收到，还没开始也没关系；这次先不追着它。" },
+  { state: "partial_progress", label: "推进了一点", notice: "已经记录这点推进，不要求它必须一次做完。" },
+  { state: "completed", label: "已经完成", notice: "已经记下完成。" },
+  { state: "blocked", label: "卡住了", notice: "已经记下卡住；这不是失败，可以先停在这里。" },
+  { state: "redefined", label: "想改轻一点", notice: "可以在对话里说想把它改到多轻，这次回访先收起来。" },
+] as const;
+
 export function App() {
   const audio = useAudio();
   const [loading, setLoading] = useState(true);
@@ -292,8 +300,15 @@ export function App() {
           {sceneWorldEnabled && <header className="drawer-header"><div><small>水面上的对话</small><strong>tata 在听</strong></div><button onClick={closeDialog} aria-label="收起对话">×</button></header>}
           {followups.length > 0 && <div className="followup-stack">
             {followups.map((item) => <article className="followup-card" key={item.id}>
-              <span>上次留下的小物件</span><p>{item.action.text}</p>
-              <div><button onClick={() => api.updateFollowup(item.id, "completed").then(() => setFollowups((all) => all.filter((entry) => entry.id !== item.id)))}>已经处理</button><button className="ghost" onClick={() => api.updateFollowup(item.id, "closed").then(() => setFollowups((all) => all.filter((entry) => entry.id !== item.id)))}>先收起来</button></div>
+              <span>上次留下的小物件</span><p>{item.action.text}</p><small>不用交作业，只选最接近现在的状态。</small>
+              <div>{followupOutcomeOptions.map((option) => <button
+                className={option.state === "completed" ? "" : "ghost"}
+                key={option.state}
+                onClick={() => api.labelFollowupOutcome(item.id, option.state).then(() => {
+                  setFollowups((all) => all.filter((entry) => entry.id !== item.id));
+                  setOperationNotice(option.notice);
+                }).catch((failure: unknown) => setError(failure instanceof Error ? failure.message : "回访状态更新失败"))}
+              >{option.label}</button>)}</div>
             </article>)}
           </div>}
 

@@ -12,12 +12,16 @@ try {
     include: { user: { select: { researchId: true } } },
     orderBy: { createdAt: "asc" },
   });
-  const header = ["research_id", "event_type", "duration_ms", "created_at", "metadata_json"];
+  const header = ["research_id", "event_key", "event_type", "event_version", "occurred_at", "is_replay", "duration_ms", "created_at", "metadata_json"];
   const lines = [header.map(csvCell).join(",")];
   for (const event of events) {
     lines.push([
       event.user.researchId,
+      event.eventKey,
       event.eventType,
+      event.eventVersion,
+      event.occurredAt.toISOString(),
+      event.isReplay,
       event.durationMs,
       event.createdAt.toISOString(),
       event.metadataJson ? JSON.stringify(event.metadataJson) : "",

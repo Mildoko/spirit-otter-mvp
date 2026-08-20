@@ -16,6 +16,11 @@
     "test": "vitest run",
     "test:integration": "vitest run tests/integration",
     "test:acceptance": "vitest run tests/acceptance",
+    "test:experience": "vitest run tests/unit/experience-constitution.test.ts tests/unit/policy-router.test.ts tests/unit/reply-validator.test.ts tests/acceptance/character-freeze.acceptance.test.ts tests/acceptance/response-language.acceptance.test.ts",
+    "pretest:eval:core": "npm run build",
+    "test:eval:core": "node dist/scripts/core-dialogue-eval.js --lane=deterministic",
+    "pretest:eval:core:model": "npm run build",
+    "test:eval:core:model": "node dist/scripts/core-dialogue-eval.js --lane=model",
     "test:watch": "vitest",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -24,6 +29,13 @@
     "invites": "tsx src/scripts/generate-invites.ts",
     "cleanup": "tsx src/scripts/cleanup.ts",
     "export:research": "tsx src/scripts/export-research.ts"
+    ,"prereport:events": "npm run build"
+    ,"report:events": "node dist/scripts/core-dialogue-event-audit.js"
+    ,"prereport:product-metrics": "npm run build"
+    ,"report:product-metrics": "node dist/scripts/core-dialogue-product-metrics.js"
+    ,"review:experience": "node dist/scripts/core-experience-blind-review.js"
+    ,"prereport:release": "npm run build"
+    ,"report:release": "node dist/scripts/core-dialogue-release-decision.js"
     ,"prepreflight": "npm run build"
     ,"preflight": "node dist/scripts/preflight.js"
     ,"preinit:full": "npm run build"

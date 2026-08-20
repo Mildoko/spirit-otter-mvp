@@ -47,7 +47,7 @@ export interface BootstrapData {
   conversation: { id: string };
   messages: Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>;
   actions: Array<{ id: string; text: string; status: string; createdAt: string }>;
-  followups: Array<{ id: string; actionId: string; dueAt: string; status: string; action: { id: string; text: string; status: string } }>;
+  followups: Array<{ id: string; actionId: string; dueAt: string; status: string; outcomeState: "not_started" | "partial_progress" | "completed" | "blocked" | "redefined"; outcomeLabeledAt: string | null; action: { id: string; text: string; status: string } }>;
   lastEmotion?: { turnId: string; interpretation: PublicEmotionInterpretation };
   visit: {
     visitId: string;
@@ -89,6 +89,7 @@ export const api = {
   updateAction: (id: string, status: "completed" | "deferred" | "deleted") => request(`/actions/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   createFollowup: (actionId: string, dueAt: string) => request("/followups", { method: "POST", body: JSON.stringify({ actionId, dueAt, authorized: true }) }),
   updateFollowup: (id: string, status: "completed" | "deferred" | "closed" | "deleted") => request(`/followups/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  labelFollowupOutcome: (id: string, state: "not_started" | "partial_progress" | "completed" | "blocked" | "redefined") => request(`/followups/${id}/outcome`, { method: "POST", body: JSON.stringify({ state, source: "ui_select" }) }),
   requestHelp: (turnId: string) => request<{ requested: boolean; contact: string }>(`/safety-events/${turnId}/request-help`, { method: "POST", body: "{}" }),
   memories: (status?: MemoryStatus) => request<PublicMemoryPageV2>(`/me/memories${status ? `?status=${status}` : ""}`),
   decideMemory: (id: string, decision: MemoryDecisionV2) => request<PublicMemoryV2>(`/me/memories/${id}`, { method: "PATCH", body: JSON.stringify(decision) }),

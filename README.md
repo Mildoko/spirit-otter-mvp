@@ -37,6 +37,10 @@
 ```text
 npm run typecheck
 npm test
+npm run test:experience
+npm run test:eval:core
+npm run report:product-metrics
+npm run report:release
 npm run build
 npm run cleanup
 npm run export:research
@@ -45,6 +49,14 @@ npm run report:acceptance
 ```
 
 Postgres 集成测试需要先把迁移部署到独立测试库，并设置 `TEST_DATABASE_URL` 后运行 `npm run test:integration`；专用集成测试命令缺少数据库时会失败，不会把跳过误报为通过。完整服务启动后，设置一次性 `E2E_INVITE_CODE` 与可选 `E2E_BASE_URL`，运行 `npm run test:e2e`。
+
+Core Dialogue Eval v1 的无密钥确定性通道使用 `npm run test:eval:core`，已纳入普通 CI；它只对安全与产品硬边界做阻断，其余行为指标用于建立基线。配置模型密钥后可手动运行 `npm run test:eval:core:model`，任何普通样本未取得真实云模型输出都会使该次运行无效并以非零状态退出。报告写入 `test-results/core-dialogue-eval-*.json` 与 `.md`，完整口径见 `docs/core-dialogue-eval-v1.md`。
+
+所有 Router、Prompt、角色、行动、回访和 Eval 变更必须服从 `docs/product-experience-constitution-v1.md`。优先级固定为“安全与现实边界 > 核心体验 > 产品策略 > Eval 指标”；非安全指标不得以破坏承接、用户节奏、角色连续性或行动控制权为代价优化。
+
+第二阶段 Core Dialogue Event v1 已建立服务端权威事件、字段白名单、隐私校验和数据库幂等键。迁移数据库并产生受控测试事件后，可运行 `npm run report:events` 审计事件质量；该报告不计算线上北极星。实现边界见 `docs/core-dialogue-events-v1.md`。
+
+第三阶段新增用户主动选择的五级回访结果、`event-v2`、受控产品指标、基线/候选盲评包和非自动发布决策报告。运行方式及可测性边界见 `docs/core-dialogue-phase3-v1.md`。缺少人工体验结果时，发布决策必须为 `hold`。
 
 生产环境使用 `NODE_ENV=production`，缺少模型密钥时服务会拒绝启动。`GET /api/health` 只返回可用状态，不返回厂商、模型或内部错误。
 

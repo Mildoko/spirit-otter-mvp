@@ -24,6 +24,8 @@ jobs:
       - run: npm run db:generate
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:experience
+      - run: npm run test:eval:core
       - run: npm run build
       - name: Upload failure diagnostics
         if: failure()

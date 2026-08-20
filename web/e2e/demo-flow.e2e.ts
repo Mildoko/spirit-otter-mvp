@@ -184,6 +184,39 @@ test("语音输入只填入独立输入栏，用户确认后才发送", async ({
   await expect(page.locator(".message-user").last()).toContainText("我想用语音和 tata 说说话");
 });
 
+test("回访提供五个无催促结果并尊重用户选择", async ({ page }) => {
+  let submitted: unknown = null;
+  await page.route("**/api/session/bootstrap", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      researchId: "DEMO-LOCAL", researchContact: "现场研究人员",
+      aiReminder: "你正在与 AI 系统互动。", conversation: { id: "conversation-1" }, messages: [], actions: [],
+      followups: [{
+        id: "followup-1", actionId: "action-1", dueAt: new Date().toISOString(), status: "pending",
+        outcomeState: "not_started", outcomeLabeledAt: null,
+        action: { id: "action-1", text: "写出汇报标题", status: "confirmed" },
+      }],
+      visit: { visitId: "visit-1", currentVisitAt: new Date().toISOString(), isReturning: true },
+    }),
+  }));
+  await page.route("**/api/followups/followup-1/outcome", async (route) => {
+    submitted = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "followup-1", outcomeState: "blocked", status: "closed" }) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  const card = page.locator(".followup-card");
+  await expect(card).toContainText("不用交作业，只选最接近现在的状态");
+  for (const label of ["还没开始", "推进了一点", "已经完成", "卡住了", "想改轻一点"]) {
+    await expect(card.getByRole("button", { name: label })).toBeVisible();
+  }
+  await card.getByRole("button", { name: "卡住了" }).click();
+  expect(submitted).toEqual({ state: "blocked", source: "ui_select" });
+  await expect(card).toHaveCount(0);
+  await expect(page.locator(".operation-notice")).toContainText("这不是失败");
+});
+
 test("用户可以查看、确认、纠正、停用和删除 tata 的记忆", async ({ page }) => {
   const relation = { id: "relation-1", type: "may_trigger", sourceMemoryId: "memory-1", targetMemoryId: "memory-2", sourceContent: "明天和主管开会", targetContent: "主管表达很直接", claimState: "hypothesis", status: "active", confidence: 0.94, observedAt: new Date().toISOString() };
   let memories = [

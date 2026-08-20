@@ -201,6 +201,15 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
     const { status } = z.object({ status: z.enum(["completed", "deferred", "closed", "deleted"]) }).parse(request.body);
     return store.updateFollowup(id, status as PublicFollowup["status"]);
   });
+  app.post("/api/followups/:id/outcome", async (request) => {
+    const store = storeFor(request);
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    const { state } = z.object({
+      state: z.enum(["not_started", "partial_progress", "completed", "blocked", "redefined"]),
+      source: z.literal("ui_select"),
+    }).parse(request.body);
+    return store.labelFollowupOutcome(id, state);
+  });
   app.post("/api/safety-events/:turnId/request-help", async (request, reply) => {
     const store = storeFor(request);
     const { turnId } = z.object({ turnId: z.string() }).parse(request.params);

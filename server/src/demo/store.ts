@@ -348,7 +348,10 @@ export class DemoStore {
     if (!Number.isFinite(due.getTime()) || due.getTime() <= now || due.getTime() > now + 14 * 86_400_000) {
       throw Object.assign(new Error("回访时间需在未来 14 天内"), { statusCode: 400, code: "INVALID_DUE_AT" });
     }
-    const followup: PublicFollowup = { id: randomUUID(), actionId, dueAt: due.toISOString(), status: "pending", action };
+    const followup: PublicFollowup = {
+      id: randomUUID(), actionId, dueAt: due.toISOString(), status: "pending",
+      outcomeState: "not_started", outcomeLabeledAt: null, action,
+    };
     this.followups.push(followup);
     return followup;
   }
@@ -359,6 +362,25 @@ export class DemoStore {
       throw Object.assign(new Error("回访不存在"), { statusCode: 404, code: "NOT_FOUND" });
     }
     followup.status = status;
+    return followup;
+  }
+
+  labelFollowupOutcome(id: string, state: PublicFollowup["outcomeState"]): PublicFollowup {
+    const followup = this.followups.find((item) => item.id === id);
+    if (!followup || followup.status === "deleted") {
+      throw Object.assign(new Error("回访不存在"), { statusCode: 404, code: "NOT_FOUND" });
+    }
+    if (followup.outcomeLabeledAt && followup.outcomeState === state) {
+      throw Object.assign(new Error("回访结果没有变化"), { statusCode: 409, code: "FOLLOWUP_OUTCOME_UNCHANGED" });
+    }
+    if (followup.outcomeState === "completed" && state !== "completed") {
+      throw Object.assign(new Error("已完成的回访结果不能改回其他状态"), { statusCode: 409, code: "INVALID_FOLLOWUP_OUTCOME_TRANSITION" });
+    }
+    followup.outcomeState = state;
+    followup.outcomeLabeledAt = new Date().toISOString();
+    followup.status = state === "completed" ? "completed" : "closed";
+    if (state === "completed") followup.action.status = "completed";
+    else if (followup.action.status === "confirmed") followup.action.status = "deferred";
     return followup;
   }
 

@@ -14,13 +14,22 @@
     "pretest:e2e": "npm run build",
     "test:e2e": "npm run test:e2e -w @otter/web",
     "test:acceptance": "npm run test:acceptance -w @otter/server",
+    "test:experience": "npm run test:experience -w @otter/server",
     "test:integration": "npm run test:integration -w @otter/server",
+    "test:eval:core": "npm run test:eval:core -w @otter/server",
+    "test:eval:core:model": "npm run test:eval:core:model -w @otter/server",
     "typecheck": "npm run typecheck -w @otter/shared && npm run typecheck -w @otter/server && npm run typecheck -w @otter/web",
     "db:generate": "npm run db:generate -w @otter/server",
     "db:migrate": "npm run db:migrate -w @otter/server",
     "invites": "npm run invites -w @otter/server --",
     "cleanup": "npm run cleanup -w @otter/server",
     "export:research": "npm run export:research -w @otter/server"
+    ,"report:events": "npm run report:events -w @otter/server"
+    ,"report:product-metrics": "npm run report:product-metrics -w @otter/server"
+    ,"prereview:experience": "npm run build -w @otter/server"
+    ,"review:experience": "node server/dist/scripts/core-experience-blind-review.js"
+    ,"prereport:release": "npm run build -w @otter/server"
+    ,"report:release": "node server/dist/scripts/core-dialogue-release-decision.js"
     ,"prepreflight": "npm run build -w @otter/server"
     ,"preflight": "node server/dist/scripts/preflight.js"
     ,"prepreflight:demo": "npm run build -w @otter/server"
@@ -39,7 +48,7 @@
     ,"test:model:memory": "npm run build -w @otter/shared && npm run build -w @otter/server && npm run test:model:memory -w @otter/server"
     ,"test:e2e:demo": "node scripts/run-demo-e2e.mjs"
     ,"test:e2e:full": "node scripts/run-full-e2e.mjs"
-    ,"prepackage:testable": "npm run typecheck && npm test && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
+    ,"prepackage:testable": "npm run typecheck && npm test && npm run test:eval:core && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
     ,"package:testable": "node scripts/package-testable.mjs"
   },
   "devDependencies": {

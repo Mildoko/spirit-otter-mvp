@@ -92,7 +92,9 @@ export function registerMeRoutes(app: FastifyInstance, db: PrismaClient, env: Ap
         id: conversation.id,
         messages: conversation.messages.map(({ id, role, content, createdAt }) => ({ id, role, content, createdAt })),
         actions: conversation.actionItems.map(({ id, text, status, createdAt, updatedAt }) => ({ id, text, status, createdAt, updatedAt })),
-        followups: conversation.followups.map(({ id, actionId, dueAt, status, createdAt }) => ({ id, actionId, dueAt, status, createdAt })),
+        followups: conversation.followups.map(({ id, actionId, dueAt, status, outcomeState, outcomeLabeledAt, outcomeRevision, createdAt }) => ({
+          id, actionId, dueAt, status, outcomeState, outcomeLabeledAt, outcomeRevision, createdAt,
+        })),
       })),
     };
   });

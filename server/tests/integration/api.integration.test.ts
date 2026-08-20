@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadEnv, type AppEnv } from "../../src/config/env.js";
 import { hashSecret } from "../../src/utils.js";
 import { persistMemoryCandidates, persistMemoryGraph, recallMemories } from "../../src/modules/memory/repository.js";
+import { CORE_DIALOGUE_EVENT_VERSION } from "../../src/events/core-dialogue-events.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const integration = describe.skipIf(!testDatabaseUrl);
@@ -116,6 +117,11 @@ integration("Postgres API integration", () => {
     const supportEvent = await db.supportEvent.findFirstOrThrow();
     expect(supportEvent.signalFeaturesJson).toMatchObject({ expressionClarityScore: expect.any(Number), progressReadinessScore: expect.any(Number) });
     expect(supportEvent.responseStyleJson).toBeTruthy();
+    const coreEvents = await db.behaviorEvent.findMany({ where: { eventVersion: CORE_DIALOGUE_EVENT_VERSION } });
+    expect(coreEvents.filter((event) => event.eventType === "user_turn_submitted")).toHaveLength(1);
+    expect(coreEvents.every((event) => Boolean(event.eventKey))).toBe(true);
+    expect(new Set(coreEvents.map((event) => event.eventKey)).size).toBe(coreEvents.length);
+    expect(JSON.stringify(coreEvents.map((event) => event.metadataJson))).not.toContain("今天很累，想先说说");
   });
 
   it("cascades user deletion into conversations and behavior events", async () => {
@@ -152,6 +158,15 @@ integration("Postgres API integration", () => {
 
     const followup = await app.inject({ method: "POST", url: "/api/followups", headers: { cookie, origin: env.WEB_ORIGIN }, payload: { actionId, dueAt: new Date(Date.now() + 60_000).toISOString(), authorized: true } });
     expect(followup.statusCode).toBe(201);
+    const followupId = followup.json().id as string;
+    const outcome = await app.inject({
+      method: "POST", url: `/api/followups/${followupId}/outcome`, headers: { cookie, origin: env.WEB_ORIGIN },
+      payload: { state: "partial_progress", source: "ui_select" },
+    });
+    expect(outcome.statusCode).toBe(200);
+    expect(outcome.json()).toMatchObject({ outcomeState: "partial_progress", status: "closed", outcomeRevision: 1 });
+    expect((await db.behaviorEvent.findMany({ where: { eventType: { in: ["action_generated", "action_confirmed", "followup_created", "followup_state_labeled"] } }, select: { eventType: true } })).map((event) => event.eventType)).toEqual(expect.arrayContaining(["action_generated", "action_confirmed", "followup_created", "followup_state_labeled"]));
+    expect((await db.actionItem.findUniqueOrThrow({ where: { id: actionId } })).status).toBe("deferred");
     const restored = await app.inject({ method: "GET", url: "/api/session/bootstrap", headers: { cookie } });
     expect(restored.json().conversation).not.toHaveProperty("mode");
     expect(restored.json().messages).toHaveLength(4);

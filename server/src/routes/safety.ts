@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import { requireAuth } from "../services/session-service.js";
+import { logCoreDialogueEvent } from "../services/behavior-service.js";
 
 export function registerSafetyRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
   app.post("/api/safety-events/:turnId/request-help", async (request, reply) => {
@@ -12,7 +13,14 @@ export function registerSafetyRoutes(app: FastifyInstance, db: PrismaClient, env
       where: { turnId, conversation: { userId: auth.userId } },
     });
     if (!event) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "安全事件不存在" } });
-    await db.safetyEvent.update({ where: { id: event.id }, data: { researcherHelpRequestedAt: new Date() } });
+    await db.$transaction(async (tx) => {
+      await tx.safetyEvent.update({ where: { id: event.id }, data: { researcherHelpRequestedAt: new Date() } });
+      await logCoreDialogueEvent(tx, auth.userId, {
+        eventName: "safety_help_requested",
+        eventKey: `turn:${turnId}:safety_help_requested`,
+        metadata: { sessionId: auth.sessionId, conversationId: event.conversationId, turnId, helpType: "contact_person" },
+      });
+    });
     return { requested: true, contact: env.RESEARCH_CONTACT };
   });
 }

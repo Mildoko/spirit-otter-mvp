@@ -70,6 +70,14 @@ enum MemoryStatus {
   deleted
 }
 
+enum FollowupOutcomeState {
+  not_started
+  partial_progress
+  completed
+  blocked
+  redefined
+}
+
 enum MemoryClaimState {
   asserted
   hypothesis
@@ -283,6 +291,9 @@ model FollowupTask {
   actionId       String
   dueAt          DateTime
   status         FollowupStatus @default(pending)
+  outcomeState   FollowupOutcomeState @default(not_started)
+  outcomeLabeledAt DateTime?
+  outcomeRevision Int           @default(0)
   shownAt        DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -291,6 +302,7 @@ model FollowupTask {
   action         ActionItem     @relation(fields: [actionId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, status, dueAt])
+  @@index([conversationId, outcomeState, outcomeLabeledAt])
   @@index([expiresAt])
   @@map("followup_tasks")
 }
@@ -418,15 +430,20 @@ model MemoryRevision {
 model BehaviorEvent {
   id           String        @id @default(cuid())
   userId       String
+  eventKey     String?       @unique
   eventType    String
+  eventVersion String        @default("event-v2")
   metadataJson Json?
   durationMs   Int?
+  occurredAt   DateTime      @default(now())
+  isReplay     Boolean       @default(false)
   createdAt    DateTime      @default(now())
   expiresAt    DateTime
   user         AnonymousUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([eventType, createdAt])
+  @@index([eventType, occurredAt])
   @@index([expiresAt])
   @@map("behavior_events")
 }

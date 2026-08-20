@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { AppEnv } from "../config/env.js";
 import { RECORD_DAYS, SESSION_COOKIE, SESSION_DAYS } from "../config/constants.js";
 import { addDays, hashSecret, randomResearchId, randomToken } from "../utils.js";
-import { logBehavior } from "../services/behavior-service.js";
+import { logCoreDialogueEvent } from "../services/behavior-service.js";
 import { requireAuth } from "../services/session-service.js";
 
 const redeemSchema = z.object({
@@ -17,7 +17,7 @@ const redeemSchema = z.object({
 
 export function registerAuthRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
   app.post("/api/auth/redeem-invite", {
-    config: { rateLimit: { max: 8, timeWindow: "10 minutes" } },
+    config: { rateLimit: { max: env.NODE_ENV === "test" ? 1200 : 8, timeWindow: "10 minutes" } },
   }, async (request, reply) => {
     const body = redeemSchema.parse(request.body);
     const now = new Date();
@@ -46,9 +46,14 @@ export function registerAuthRoutes(app: FastifyInstance, db: PrismaClient, env: 
         data: { usedAt: now, usedById: user.id },
       });
       if (claimed.count !== 1) throw Object.assign(new Error("邀请码已被使用"), { statusCode: 409 });
-      await tx.session.create({ data: { tokenHash, userId: user.id, expiresAt } });
+      const session = await tx.session.create({ data: { tokenHash, userId: user.id, expiresAt } });
       const conversation = await tx.conversation.create({ data: { userId: user.id } });
-      await logBehavior(tx, user.id, "session_started");
+      await logCoreDialogueEvent(tx, user.id, {
+        eventName: "session_started",
+        eventKey: `session:${session.id}:session_started`,
+        metadata: { sessionId: session.id, entrySurface: "web", inviteCodePresent: true, hasOpenFollowup: false, hasConfirmedAction: false },
+        occurredAt: now,
+      });
       return { researchId: user.researchId, conversationId: conversation.id };
     });
 
@@ -65,7 +70,11 @@ export function registerAuthRoutes(app: FastifyInstance, db: PrismaClient, env: 
   app.post("/api/auth/logout", async (request, reply) => {
     const auth = await requireAuth(request, db, env);
     await db.$transaction(async (tx) => {
-      await logBehavior(tx, auth.userId, "session_closed");
+      await logCoreDialogueEvent(tx, auth.userId, {
+        eventName: "session_ended",
+        eventKey: `session:${auth.sessionId}:session_ended`,
+        metadata: { sessionId: auth.sessionId, endReason: "user_exit" },
+      });
       await tx.session.delete({ where: { id: auth.sessionId } });
     });
     reply.clearCookie(SESSION_COOKIE, {
