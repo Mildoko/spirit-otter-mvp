@@ -2,7 +2,7 @@ import type { EmotionState, ExpressiveAccent, GuidanceStateV1, ResponsePlan, Res
 import { z } from "zod";
 import { DEFAULT_GUIDANCE_STATE } from "../support/guidance-state.js";
 
-export const RESPONSE_STYLE_VERSION = "2026-08-18.2";
+export const RESPONSE_STYLE_VERSION = "2026-08-20.1";
 
 export const responseStyleProfileSchema = z.object({
   pace: z.enum(["very_slow", "slow", "steady", "direct"]), sentenceLength: z.enum(["short", "medium"]),
@@ -72,6 +72,7 @@ export function resolveResponseStyle(input: { plan: ResponsePlan; state: Emotion
   const profile: ResponseStyleProfile = { ...base };
   const reasonCodes = [`SPIRIT_${plan.activeSpirit.toUpperCase()}`, `TRANSITION_${plan.transitionStyle.toUpperCase()}`];
   const avoidPhrases = detectRecentPatterns(input.recentContext);
+  const explicitQuestionBoundary = guidanceState.userRequestedNoQuestions || /(?:不要|别|不用|不想|先别).{0,6}(?:问|问题)/u.test(input.userText);
   if (!plan.allowActionDraft || plan.forbiddenContent.some((item) => /建议|步骤|行动|任务/u.test(item))) profile.adviceDirectness = "none";
   if (guidanceState.userRequestedNoQuestions || plan.forbiddenContent.some((item) => item === "提问")) profile.questionBudget = 0;
   if (/(?:不要|别|不用|不想|先别).{0,6}(?:问|问题)/u.test(input.userText)) { profile.questionBudget = 0; reasonCodes.push("USER_BOUNDARY_NO_QUESTION"); }
@@ -91,6 +92,10 @@ export function resolveResponseStyle(input: { plan: ResponsePlan; state: Emotion
   if (state.stressLoad >= 0.7 || state.valence <= -0.65) { profile.reflectionDepth = profile.reflectionDepth === "meaning" ? "tension" : profile.reflectionDepth; reasonCodes.push("DISTRESS_NO_REFRAME"); }
   if (state.confidence < 0.55) { profile.uncertainty = "high"; profile.reflectionDepth = "fact"; reasonCodes.push("LOW_CONFIDENCE_HYPOTHESIS"); }
   if (avoidPhrases.includes("连续提问")) profile.questionBudget = 0;
+  if (plan.routeReasonCodes.includes("ELEVATED_RISK") && !explicitQuestionBoundary) {
+    profile.questionBudget = 1;
+    reasonCodes.push("ELEVATED_SAFETY_CHECK_REQUIRED");
+  }
   const selected = selectExpressiveAccent({ plan, state, riskLevel: input.riskLevel, userText: input.userText, guidanceState, enabled: input.expressionV2Enabled ?? true, ...(input.expressionClarityScore !== undefined ? { expressionClarityScore: input.expressionClarityScore } : {}) });
   if (profile.conversationality !== "restrained") profile.expressiveAccent = selected.accent;
   reasonCodes.push(selected.reason);

@@ -47,6 +47,7 @@ const organizePatterns = [
   /(?:只给我|只帮我).{0,16}(?:动作|开始点|一步)/,
   /直接给我.{0,10}(?:动作|一步|开始点)/,
   /(?:拆|缩成).{0,8}(?:一步|一个.{0,4}动作)/,
+  /(?:再|更).{0,4}(?:轻|小|简单).{0,10}(?:一点|一些|愿意试|可以试)/,
 ];
 const stopPatterns = [/(?:算了|停一下|先不弄|不想整理|更烦了|别再列)/, /(?:不|不用|无需|别).{0,8}(?:帮我)?(?:整理|理一理|梳理)/];
 const directActionPatterns = [
@@ -60,10 +61,12 @@ const tentativeOrganizePatterns = [
   /你要是.{0,16}(?:帮我|缩成|捞).{0,12}(?:也行|就好|可以)/,
   /如果(?:只是|只).{0,16}(?:帮我|缩成|捞|一步)/,
   /(?:可能|也许).{0,12}(?:帮我|缩成|捞).{0,12}(?:一步|开始|动作)/,
+  /如果.{0,10}(?:再|更).{0,4}(?:轻|小|简单).{0,10}(?:愿意|可以|试)/,
 ];
 const acceptancePatterns = [
   /^(?:好|好的|可以|行|来吧|试试|那就来|嗯好)[。！!，,\s]*$/u,
   /(?:可以|愿意|那就).{0,6}(?:整理|往前|试试|开始)/u,
+  /(?:这个|这种|当前)?(?:版本|动作|一步)?.{0,8}(?:可以|能|愿意).{0,4}(?:试|做|开始|接住)/u,
   /^先(?:打开|写|回复|确认|整理|创建|看|记|发|填).{1,30}[。！!，,\s]*$/u,
 ];
 const declineTransitionPatterns = [/(?:先不|不要|不想|算了|不用).{0,8}(?:整理|往前|行动|切换|试)/u, /^(?:不了|不用了|算了)[。！!，,\s]*$/u];
@@ -73,7 +76,9 @@ const allowQuestionPatterns = [/(?:可以|你可以|允许).{0,5}(?:问|提问)/
 export function detectConversationIntent(text: string, guidanceState: GuidanceStateV1 = DEFAULT_GUIDANCE_STATE): ConversationIntent {
   const refuseAdvice = refuseAdvicePatterns.some((pattern) => pattern.test(text));
   const requestAdvice = !refuseAdvice && requestAdvicePatterns.some((pattern) => pattern.test(text));
-  const stopOrganizing = stopPatterns.some((pattern) => pattern.test(text));
+  const requestsLighterAction = /(?:如果|要是)?.{0,8}(?:再|更).{0,4}(?:轻|小|简单).{0,10}(?:愿意|可以|试)/u.test(text);
+  const rejectsCurrentWeight = /(?:还是|有点|太).{0,5}(?:重|难)|接不住/u.test(text);
+  const stopOrganizing = stopPatterns.some((pattern) => pattern.test(text)) || (rejectsCurrentWeight && !requestsLighterAction);
   const requestOrganize = !refuseAdvice && !stopOrganizing && organizePatterns.some((pattern) => pattern.test(text));
   const tentativeOrganize = requestOrganize && tentativeOrganizePatterns.some((pattern) => pattern.test(text));
   const directActionRequest = requestOrganize && !tentativeOrganize && directActionPatterns.some((pattern) => pattern.test(text));

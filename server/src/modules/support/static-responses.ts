@@ -1,6 +1,7 @@
 import type { EmotionState, RiskLevel, ResponsePlan, ResponseStyleResolution } from "@otter/shared";
 import { aphorismMarkers, bannedReplyPhrases, dependencyPhrases, diagnosisPhrases, dryHumorMarkers, everydayMetaphorMarkers, spiritLanguage, waterMetaphorMarkers } from "../character/language-registry.js";
 import type { EmotionExpressionBrief } from "../character/emotion-expression.js";
+import type { PromptActionContext } from "../character/prompt-composer.js";
 
 export function highRiskResponse(level: RiskLevel, researchContact: string): string {
   const urgency = level === "imminent" ? "你刚才描述的情况可能有迫切危险。" : "你刚才提到的情况让我很担心你现在的安全。";
@@ -13,6 +14,7 @@ export interface FallbackReplyInput {
   state: EmotionState;
   userText: string;
   recentContext: string[];
+  actionContext?: PromptActionContext;
   emotionExpression?: EmotionExpressionBrief;
 }
 
@@ -52,6 +54,14 @@ function recentUserAnchor(input: FallbackReplyInput): string {
   return compactAnchor(prior?.replace(/^user:\s*/u, "") ?? input.userText);
 }
 
+function lighterActionFromContext(action: string): string {
+  if (/(?:未读|消息)/u.test(action)) return "只选一条最需要回应的未读消息，先写一句回复草稿，不发送";
+  if (/(?:邮件|邮件回复)/u.test(action)) return "只打开那封邮件，写下一句回复草稿，不发送";
+  if (/(?:简历)/u.test(action)) return "只打开简历文件，写下姓名，随后可以停";
+  const anchor = compactAnchor(action).slice(0, 22);
+  return anchor ? `只为“${anchor}”写下一个五分钟内的起点，暂不执行` : "只写下一个五分钟内的起点，暂不执行";
+}
+
 export function fallbackReply(input: FallbackReplyInput): { reply: string; actionDraft: string | null } {
   const { plan, style, state, userText } = input;
   const compact = compactAnchor(userText);
@@ -59,7 +69,7 @@ export function fallbackReply(input: FallbackReplyInput): { reply: string; actio
   const opening = unusedOpening(input);
   if (plan.routeReasonCodes.includes("ELEVATED_RISK")) {
     return {
-      reply: `${quoted}的分量已经很重了，我先不把它变成任务。我想轻轻确认一件重要的事：你现在安全吗，身边有没有可以联系或陪你一下的人？`,
+      reply: `${quoted}的分量已经很重了，我先不把它变成任务。请先确认你此刻是否安全，以及身边有没有可以联系或陪你一下的人。`,
       actionDraft: null,
     };
   }
@@ -107,7 +117,9 @@ export function fallbackReply(input: FallbackReplyInput): { reply: string; actio
       ? "先不请剩下的任务全员抢麦。"
       : style.profile.expressiveAccent === "metaphor" ? "先找一小块落脚处。" : style.profile.expressiveAccent === "aphorism" ? "行动的价值不在大，而在能开始。" : "";
     const actionDraft = plan.allowActionDraft
-      ? /(?:不知道说什么|脑子(?:是)?空|一片空白|说不上来|没接上电)/u.test(userText)
+      ? input.actionContext?.action
+        ? lighterActionFromContext(input.actionContext.action)
+        : /(?:不知道说什么|脑子(?:是)?空|一片空白|说不上来|没接上电)/u.test(userText)
         ? "写下此刻最压着你的那件事，只写名称"
         : compact ? `为“${compact.slice(0, 28)}”写下一个 10 分钟内能开始的第一步` : "写下一个 10 分钟内能开始的第一步"
       : null;

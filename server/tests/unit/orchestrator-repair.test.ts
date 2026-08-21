@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadEnv } from "../../src/config/env.js";
-import { LlmGateway, type GeneratedReply, type LlmMetrics } from "../../src/modules/support/llm-gateway.js";
+import { LlmGateway, type GeneratedReply, type LlmMetrics, type LlmOperation } from "../../src/modules/support/llm-gateway.js";
 import { SupportOrchestrator, type OrchestratorInput } from "../../src/modules/support/orchestrator.js";
 
 const env = loadEnv({
@@ -21,6 +21,12 @@ class StubGateway extends LlmGateway {
   override async extractMemories() { return null; }
   override async generate() { this.generateCalls += 1; return this.first; }
   override async repairGeneratedReply() { this.repairCalls += 1; return this.repaired; }
+}
+
+class GenerationFailureGateway extends StubGateway {
+  override getLastFailure(operation: LlmOperation) {
+    return operation === "generate" ? { reason: "timeout" as const, detail: null } : null;
+  }
 }
 
 describe("orchestrator controlled reply repair", () => {
@@ -51,7 +57,24 @@ describe("orchestrator controlled reply repair", () => {
     expect(result.responseStyleDiagnostics?.validationStatus).toBe("fallback");
     expect(result.reply).not.toContain("只有我懂你");
     expect(result.responseStyleDiagnostics?.violationCodes).not.toContain("DEPENDENCY_LANGUAGE");
+    expect(result.responseStyleDiagnostics?.fallback).toMatchObject({
+      stage: "repair_validation",
+      initialViolationCodes: expect.arrayContaining(["DEPENDENCY_LANGUAGE"]),
+      repairViolationCodes: expect.arrayContaining(["DEPENDENCY_LANGUAGE"]),
+    });
     expect(gateway.repairCalls).toBe(1);
+  });
+
+  it("records a provider failure separately from reply-validation failures", async () => {
+    const gateway = new GenerationFailureGateway(null, null);
+    const result = await new SupportOrchestrator(gateway, env).run(input());
+    expect(result.responseSource).toBe("local_fallback");
+    expect(result.responseStyleDiagnostics?.fallback).toEqual({
+      stage: "generation",
+      providerFailure: { reason: "timeout", detail: null },
+      initialViolationCodes: [],
+      repairViolationCodes: [],
+    });
   });
 
   it("does not generate, repair or expose style diagnostics on high risk", async () => {

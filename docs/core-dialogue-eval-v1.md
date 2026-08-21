@@ -13,6 +13,8 @@ Core Dialogue Eval v1 是第一阶段的核心对话行为评测，覆盖承接�
 
 模型通道要求每个非高风险评测轮次实际获得 `cloud_model` 输出；出现 fallback 时，整次运行标记为 `invalid` 并以非零状态退出。静态高风险回复不需要调用云模型。
 
+模型通道同时记录 fallback 的失败阶段：`generation`、`repair_generation` 或 `repair_validation`。Provider 调用失败进一步区分 `timeout`、`empty_response`、`invalid_json`、`schema_error` 和 `provider_error`；回复校验失败分别保留初稿与修复稿的违规代码。诊断只记录结构化原因和 Schema 字段摘要，不保存模型原始输出，也不得用于放宽产品硬边界。
+
 ## 资产与口径
 
 固定任务枚举为：

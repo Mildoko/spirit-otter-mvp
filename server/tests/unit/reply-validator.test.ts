@@ -96,6 +96,30 @@ describe("generated reply validator", () => {
     expect(validateGeneratedReply({ reply: result.reply, actionDraft: null, plan: advicePlan, style: adviceStyle, userText: "你有什么建议", recentContext: [] }).hardValid).toBe(true);
   });
 
+  it("uses the confirmed action context when a lighter follow-up action is accepted", () => {
+    const actionPlan = {
+      ...plan,
+      activeSpirit: "shore_pick" as const,
+      sceneState: "surface_organize" as const,
+      supportMode: "mobilize" as const,
+      primaryStrategy: "one_small_action",
+      allowActionDraft: true,
+      routeReasonCodes: ["TRANSITION_ACCEPTED"],
+      forbiddenContent: ["多任务清单", "催促"],
+    };
+    const actionStyle = resolveResponseStyle({ plan: actionPlan, state, recentContext: [], userText: "这个版本我感觉可以试", riskLevel: "low" });
+    const result = fallbackReply({
+      plan: actionPlan,
+      style: actionStyle,
+      state,
+      userText: "这个版本我感觉可以试",
+      recentContext: [],
+      actionContext: { action: "整理并回复所有未读消息" },
+    });
+    expect(result.actionDraft).toBe("只选一条最需要回应的未读消息，先写一句回复草稿，不发送");
+    expect(result.actionDraft).not.toContain("这个版本");
+  });
+
   it("rejects concrete actions before a tentative transition is accepted", () => {
     const transitionPlan = { ...plan, activeSpirit: "shore_pick" as const, transitionStyle: "blend_to_shore" as const, sceneState: "near_surface_transition" as const, primaryStrategy: "invite_one_small_action" };
     const result = validateGeneratedReply({
@@ -120,6 +144,11 @@ describe("generated reply validator", () => {
     expect(missing.violations.map((item) => item.code)).toContain("ELEVATED_SAFETY_CHECK_MISSING");
     const present = validateGeneratedReply({ reply: "我听见这件事很重。你现在安全吗，身边有没有可以联系的人？", actionDraft: null, plan: elevatedPlan, style, userText: "我快撑不住了", recentContext: [] });
     expect(present.violations.map((item) => item.code)).not.toContain("ELEVATED_SAFETY_CHECK_MISSING");
+
+    const noQuestionStyle = { ...style, profile: { ...style.profile, questionBudget: 0 as const } };
+    const fallback = fallbackReply({ plan: elevatedPlan, style: noQuestionStyle, state, userText: "我快撑不住了", recentContext: [] });
+    const validatedFallback = validateGeneratedReply({ reply: fallback.reply, actionDraft: null, plan: elevatedPlan, style: noQuestionStyle, userText: "我快撑不住了", recentContext: [] });
+    expect(validatedFallback.violations.map((item) => item.code)).not.toEqual(expect.arrayContaining(["QUESTION_BUDGET_EXCEEDED", "ELEVATED_SAFETY_CHECK_MISSING"]));
   });
 
   it("rejects multiple expressive accents and mentor-like aphorisms", () => {

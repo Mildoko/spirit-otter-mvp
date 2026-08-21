@@ -154,18 +154,24 @@ export class SupportOrchestrator {
       this.gateway.generate(prompt),
       this.gateway.extractMemories(input.text, input.memories),
     ]);
+    const generationFailure = generated ? null : this.gateway.getLastFailure("generate");
     const fallback = fallbackReply({
       plan: routed.plan,
       style: responseStyle,
       state,
       userText: input.text,
       recentContext: input.recentContext,
+      ...(input.actionContext ? { actionContext: input.actionContext } : {}),
       ...emotionPrompt,
     });
     let selected = generated;
     let validationStatus: ResponseStyleDiagnostics["validationStatus"] = generated ? "passed" : "fallback";
     let violationCodes: string[] = [];
     let rejectedViolationCodes: string[] = [];
+    let initialViolationCodes: string[] = [];
+    let repairViolationCodes: string[] = [];
+    let fallbackStage: NonNullable<ResponseStyleDiagnostics["fallback"]>["stage"] | null = generated ? null : "generation";
+    let fallbackProviderFailure = generationFailure;
     let repairMetric: LlmMetrics | undefined;
     if (generated) {
       const initialValidation = validateGeneratedReply({
@@ -178,9 +184,11 @@ export class SupportOrchestrator {
         recentContext: input.recentContext,
       });
       violationCodes = initialValidation.violations.map((item) => item.code);
+      initialViolationCodes = [...violationCodes];
       if (!initialValidation.ok) {
         rejectedViolationCodes = [...violationCodes];
         const repaired = await this.gateway.repairGeneratedReply(prompt, generated, violationCodes);
+        const repairFailure = repaired ? null : this.gateway.getLastFailure("repair");
         if (repaired) {
           repairMetric = repaired.metrics;
           const repairedValidation = validateGeneratedReply({
@@ -193,6 +201,7 @@ export class SupportOrchestrator {
             recentContext: input.recentContext,
           });
           violationCodes = repairedValidation.violations.map((item) => item.code);
+          repairViolationCodes = [...violationCodes];
           if (repairedValidation.hardValid) {
             selected = repaired;
             validationStatus = "repaired";
@@ -200,10 +209,13 @@ export class SupportOrchestrator {
             rejectedViolationCodes = [...violationCodes];
             selected = null;
             validationStatus = "fallback";
+            fallbackStage = "repair_validation";
           }
         } else if (!initialValidation.hardValid) {
           selected = null;
           validationStatus = "fallback";
+          fallbackStage = "repair_generation";
+          fallbackProviderFailure = repairFailure;
         }
       }
     }
@@ -248,6 +260,14 @@ export class SupportOrchestrator {
         validationStatus,
         violationCodes,
         ...(validationStatus === "fallback" && rejectedViolationCodes.length ? { rejectedViolationCodes } : {}),
+        ...(validationStatus === "fallback" && fallbackStage ? {
+          fallback: {
+            stage: fallbackStage,
+            ...(fallbackProviderFailure ? { providerFailure: fallbackProviderFailure } : {}),
+            initialViolationCodes,
+            repairViolationCodes,
+          },
+        } : {}),
         styleVersion: responseStyle.styleVersion,
       },
       nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent }),

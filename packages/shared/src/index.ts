@@ -108,6 +108,15 @@ export interface ResponseStyleDiagnostics {
   validationStatus: "passed" | "repaired" | "fallback";
   violationCodes: string[];
   rejectedViolationCodes?: string[];
+  fallback?: {
+    stage: "generation" | "repair_generation" | "repair_validation";
+    providerFailure?: {
+      reason: "timeout" | "empty_response" | "invalid_json" | "schema_error" | "provider_error";
+      detail: string | null;
+    };
+    initialViolationCodes: string[];
+    repairViolationCodes: string[];
+  };
   styleVersion: string;
 }
 

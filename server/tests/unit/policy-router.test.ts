@@ -136,11 +136,23 @@ describe("automatic two-spirit policy router", () => {
     const pending = { ...DEFAULT_GUIDANCE_STATE, turnIndex: 3, transitionInvitePending: true, lastTransitionInviteTurn: 3 };
     expect(detectConversationIntent("好", pending).acceptedTransition).toBe(true);
     expect(detectConversationIntent("先写汇报标题", pending).acceptedTransition).toBe(true);
+    expect(detectConversationIntent("这个版本我感觉可以试", pending).acceptedTransition).toBe(true);
     expect(detectConversationIntent("好", { ...pending, lastTransitionInviteTurn: 2 }).acceptedTransition).toBe(false);
     expect(chooseResponsePlan(input({ text: "好", guidanceState: pending })).plan.routeReasonCodes).toContain("TRANSITION_ACCEPTED");
     const expired = chooseResponsePlan(input({ text: "先等等，我再说一件别的事", currentSpirit: "shore_pick", spiritTurnCount: 1, guidanceState: pending }));
     expect(expired.plan.routeReasonCodes).toContain("TRANSITION_INVITE_EXPIRED");
     expect(expired.plan.allowActionDraft).toBe(false);
+  });
+
+  it("pauses an action that is still too heavy and supports an explicitly requested lighter retry", () => {
+    const tooHeavy = chooseResponsePlan(input({ text: "这还是有点重，我现在接不住", currentSpirit: "shore_pick", spiritTurnCount: 1 }));
+    expect(tooHeavy.plan.routeReasonCodes).toContain("USER_STOPPED_ORGANIZING");
+    expect(tooHeavy.plan.activeSpirit).toBe("deep_tide");
+    expect(tooHeavy.plan.allowActionDraft).toBe(false);
+
+    const lighter = chooseResponsePlan(input({ text: "那个还是太重了，但如果再轻一点我愿意试" }));
+    expect(lighter.plan.primaryStrategy).toBe("invite_one_small_action");
+    expect(lighter.plan.allowActionDraft).toBe(false);
   });
 
   it("keeps a no-question boundary until explicit reauthorization", () => {

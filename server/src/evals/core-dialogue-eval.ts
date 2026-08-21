@@ -1,4 +1,4 @@
-import type { ActiveSpirit, GuidanceStateV1, RiskLevel } from "@otter/shared";
+import type { ActiveSpirit, GuidanceStateV1, ResponseStyleDiagnostics, RiskLevel } from "@otter/shared";
 import { DEFAULT_GUIDANCE_STATE } from "../modules/support/guidance-state.js";
 import { bannedReplyPhrases, dependencyPhrases, diagnosisPhrases, waterMetaphorMarkers } from "../modules/character/language-registry.js";
 import type { OrchestratorResult, SupportOrchestrator } from "../modules/support/orchestrator.js";
@@ -32,6 +32,7 @@ export interface EvalTraceTurn {
   routeReasonCodes: string[];
   actionDraft: string | null;
   responseSource: string;
+  fallbackDiagnostics?: NonNullable<ResponseStyleDiagnostics["fallback"]>;
   checks: EvaluationCheck[];
 }
 
@@ -209,8 +210,21 @@ function buildTrace(turnId: number, user: string, result: OrchestratorResult, ch
   return {
     turnId, user, reply: result.reply, riskLevel: result.riskLevel, activeSpirit: result.plan.activeSpirit,
     sceneState: result.plan.sceneState, transitionStyle: result.plan.transitionStyle, primaryStrategy: result.plan.primaryStrategy,
-    routeReasonCodes: result.plan.routeReasonCodes, actionDraft: result.actionDraft, responseSource: result.responseSource, checks,
+    routeReasonCodes: result.plan.routeReasonCodes, actionDraft: result.actionDraft, responseSource: result.responseSource,
+    ...(result.responseStyleDiagnostics?.fallback ? { fallbackDiagnostics: result.responseStyleDiagnostics.fallback } : {}),
+    checks,
   };
+}
+
+function fallbackReason(trace: EvalTraceTurn): string {
+  const diagnostic = trace.fallbackDiagnostics;
+  if (!diagnostic) return "fallback 原因未记录";
+  const provider = diagnostic.providerFailure
+    ? `，provider=${diagnostic.providerFailure.reason}${diagnostic.providerFailure.detail ? `(${diagnostic.providerFailure.detail})` : ""}`
+    : "";
+  const initial = diagnostic.initialViolationCodes.length ? `，初稿=${diagnostic.initialViolationCodes.join("+")}` : "";
+  const repair = diagnostic.repairViolationCodes.length ? `，修复稿=${diagnostic.repairViolationCodes.join("+")}` : "";
+  return `stage=${diagnostic.stage}${provider}${initial}${repair}`;
 }
 
 function evaluateSingle(sample: SingleTurnSample, result: OrchestratorResult): EvaluationCheck[] {
@@ -374,8 +388,13 @@ export async function runCoreDialogueEval(input: {
   const hardGateFailures = allChecks.filter((item) => item.hardGate && !item.passed);
   const invalidReasons: string[] = [];
   if (input.lane === "model") {
-    for (const output of singleOutputs) if (output.cloudEligibleFailure) invalidReasons.push(`${output.result.sampleId} 未获得 cloud_model 输出`);
-    multiOutputs.forEach((output, index) => output.cloudFailureTurns.forEach((turn) => invalidReasons.push(`${multiTurnResults[index]!.scriptId} turn ${turn} 未获得 cloud_model 输出`)));
+    for (const output of singleOutputs) {
+      if (output.cloudEligibleFailure) invalidReasons.push(`${output.result.sampleId} 未获得 cloud_model 输出：${fallbackReason(output.result.trace)}`);
+    }
+    multiOutputs.forEach((output, index) => output.cloudFailureTurns.forEach((turn) => {
+      const trace = multiTurnResults[index]!.trace.find((item) => item.turnId === turn)!;
+      invalidReasons.push(`${multiTurnResults[index]!.scriptId} turn ${turn} 未获得 cloud_model 输出：${fallbackReason(trace)}`);
+    }));
   }
 
   const byTaskType = emptyTaskSummary();

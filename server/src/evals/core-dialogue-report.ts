@@ -19,6 +19,10 @@ export function renderCoreDialogueMarkdown(report: CoreDialogueEvalReport): stri
   const failedSingle = report.singleTurnResults.filter((result) => !result.passed);
   const failedScripts = report.multiTurnResults.filter((result) => result.passed === false);
   const manualScripts = report.multiTurnResults.filter((result) => result.automation === "manual_review");
+  const fallbackTraces = [
+    ...report.singleTurnResults.map((result) => ({ id: result.sampleId, trace: result.trace })),
+    ...report.multiTurnResults.flatMap((result) => result.trace.map((trace) => ({ id: `${result.scriptId} turn ${trace.turnId}`, trace }))),
+  ].filter((item) => item.trace.fallbackDiagnostics);
   const lines = [
     "# Core Dialogue Eval v1 报告",
     "",
@@ -87,6 +91,16 @@ export function renderCoreDialogueMarkdown(report: CoreDialogueEvalReport): stri
     "## 运行有效性",
     "",
     ...(report.invalidReasons.length ? report.invalidReasons.map((reason) => `- ${reason}`) : ["运行有效。"]),
+    "",
+    "## Fallback 诊断",
+    "",
+    ...(fallbackTraces.length
+      ? fallbackTraces.map(({ id, trace }) => {
+          const diagnostic = trace.fallbackDiagnostics!;
+          const provider = diagnostic.providerFailure ? `${diagnostic.providerFailure.reason}${diagnostic.providerFailure.detail ? `（${diagnostic.providerFailure.detail}）` : ""}` : "N/A";
+          return `- ${id}：stage=${diagnostic.stage}；provider=${provider}；初稿=${diagnostic.initialViolationCodes.join("、") || "无"}；修复稿=${diagnostic.repairViolationCodes.join("、") || "无"}`;
+        })
+      : ["无 fallback。"]),
     "",
   ];
   return lines.join("\n");
