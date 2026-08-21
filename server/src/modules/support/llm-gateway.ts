@@ -37,7 +37,7 @@ type JsonCallOutcome<T> =
   | { ok: false; failure: LlmFailureDiagnostic };
 
 const repairInstructions: Record<string, string> = {
-  QUESTION_BUDGET_EXCEEDED: "删去多余问题，不得用疑问句变相追问。",
+  QUESTION_BUDGET_EXCEEDED: "删去多余问题，整段最多保留一个问号，不得用疑问句变相追问。",
   UNAUTHORIZED_ACTION: "删除 actionDraft 和未经授权的具体行动。",
   ACTION_BEFORE_ACCEPTANCE: "删除具体动作，只保留一次可拒绝的低压邀请。",
   TRANSITION_INVITE_MISSING: "明确补上一句可拒绝的低压整理邀请，必须包含‘如果你愿意’或‘也可以先不整理’，不得给具体动作。",
@@ -48,15 +48,23 @@ const repairInstructions: Record<string, string> = {
   UNANCHORED_METAPHOR: "删除没有用户原文锚点的比喻；如果本轮指定警句，只保留一条与用户矛盾直接相关的白名单式警句。",
   RISK_EXPRESSIVE_ACCENT_LEAK: "删除警句和幽默，改用克制、直接的安全表达。",
   ELEVATED_SAFETY_CHECK_MISSING: "补充一次轻量的当下安全与现实支持确认。",
-  DEEP_TIDE_DIRECT_ADVICE: "删除直接建议和步骤，只保留具体承接。",
+  DEEP_TIDE_DIRECT_ADVICE: "删除直接建议和步骤；如果 Prompt 标明 casual_topic，保留对用户问题的直接知识回答，不要改成情绪承接或咨询话术。",
   REQUESTED_ADVICE_MISSING: "用户已明确请求建议：先接住具体处境，再直接给出一条清楚、有理由、可拒绝的建议或真实看法，不要列清单。",
   REQUESTED_ADVICE_DEFERRED: "删除拒答、拖延和‘先停在这里’式表达，不要只复述用户；本轮必须正面回答其建议请求。",
   REPLY_TOO_LONG: "压缩为不超过五句、500字；高过载或风险场景压缩为两到三个短句。",
-  UNSUPPORTED_EMOTION_ASSERTION: "删除没有证据的确定情绪命名，只回应用户原文事实；需要推测时使用‘可能、听着像’。",
+  UNSUPPORTED_EMOTION_ASSERTION: "删除没有证据的确定情绪命名；如果是 casual_topic，只直接回答知识问题，不推测用户情绪、兴趣或人格；其他场景只回应用户原文事实。",
   CONTRADICTS_USER_CORRECTION: "采用用户刚刚纠正的情绪说法，删除与其冲突的标签。",
   UNKNOWN_TREATED_AS_NEUTRAL: "不要把无法判断写成中性或平静，改为承认暂时还说不清。",
   DIAGNOSTIC_EMOTION_CLAIM: "删除人格、疾病或诊断式断言，只保留当前处境的暂时理解。",
-  EMOTION_LABEL_WITHOUT_EVIDENCE: "删除无证据情绪标签，回到用户原文中的具体事实或矛盾。",
+  EMOTION_LABEL_WITHOUT_EVIDENCE: "删除无证据情绪标签；casual_topic 回到直接知识回答，其他场景回到用户原文中的具体事实或矛盾。",
+  ASTROLOGY_DETERMINISTIC_CLAIM: "删除宿命、必然和确定性断言，改为‘常见说法、可能、可以当作一个观察角度’。",
+  ASTROLOGY_HIGH_STAKES_ADVICE: "删除基于星座的医疗、法律、投资、关系或其他重大决策建议，明确现实事实与专业支持优先。",
+  ASTROLOGY_SCIENCE_MISREPRESENTATION: "不要声称占星结论得到科学或医学证明，明确它只是文化谈资或自我观察角度。",
+  ASTROLOGY_UNSUPPORTED_PLACEMENT: "删除未经计算的上升、月亮、宫位和相位结论，并诚实说明当前不能计算精确星盘。",
+  ASTROLOGY_FATALISM_OR_FEAR: "删除灾难、厄运、死亡、诅咒或恐吓式内容。",
+  ASTROLOGY_USER_DISAGREEMENT_OVERRIDDEN: "接受用户对自身体验的解释，删除‘星座不会错’或替用户定型的表达。",
+  ASTROLOGY_SKILL_AFTER_OPTOUT: "立即停止星座话题并尊重用户退出，不换一种说法继续。",
+  SKILL_OVERRIDES_CORE_POLICY: "删除 Topic Skill 产生的行动、切换或回访内容；Skill 无权覆盖核心计划。",
 };
 
 export class LlmGateway {

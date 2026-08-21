@@ -3,7 +3,7 @@ import type {
   EmotionCorrectionV1,
   EmotionHypothesisV1,
   EmotionState,
-  GuidanceStateV1,
+  GuidanceState,
   MemoryCandidate,
   MemoryRelationCandidateV1,
   PromptMemory,
@@ -22,13 +22,16 @@ import { resolveResponseStyle } from "../character/response-style.js";
 import { detectDeliveredAccents } from "../character/language-registry.js";
 import { validateGeneratedReply } from "../character/reply-validator.js";
 import { filterMemoryCandidates } from "../memory/guard.js";
+import { buildSkillDiagnostics, fallbackForSkill, nextTopicSkillState } from "../skills/harness.js";
+import { resolveTopicSkill } from "../skills/registry.js";
+import type { SkillDiagnostics, SkillResolution } from "../skills/types.js";
 import { extractFallbackSignals } from "./fallback-signals.js";
 import { resolveEmotionHypothesis } from "./emotion-inference.js";
 import { mapEmotionState } from "./emotion-mapper.js";
 import { smoothEmotionState } from "./emotion-smoothing.js";
 import { LlmGateway, type LlmMetrics } from "./llm-gateway.js";
 import { chooseResponsePlan, detectConversationIntent } from "./policy-router.js";
-import { advanceGuidanceState, DEFAULT_GUIDANCE_STATE } from "./guidance-state.js";
+import { advanceGuidanceState, parseGuidanceState } from "./guidance-state.js";
 import { resolveRiskLevel, runHardRiskGuard } from "./risk-guard.js";
 import { fallbackReply, highRiskResponse } from "./static-responses.js";
 
@@ -42,7 +45,7 @@ export interface OrchestratorInput {
   previousSmoothedState?: EmotionState;
   memories: PromptMemory[];
   actionContext?: PromptActionContext;
-  guidanceState?: GuidanceStateV1;
+  guidanceState?: GuidanceState;
   previousEmotionCorrection?: EmotionCorrectionV1;
 }
 
@@ -66,14 +69,16 @@ export interface OrchestratorResult {
   characterVersion: string;
   responseStyle?: ResponseStyleResolution;
   responseStyleDiagnostics?: ResponseStyleDiagnostics;
-  nextGuidanceState: GuidanceStateV1;
+  nextGuidanceState: ReturnType<typeof parseGuidanceState>;
+  skillResolution: SkillResolution;
+  skillDiagnostics: SkillDiagnostics;
 }
 
 export class SupportOrchestrator {
   constructor(private readonly gateway: LlmGateway, private readonly env: AppEnv) {}
 
   async run(input: OrchestratorInput): Promise<OrchestratorResult> {
-    const guidanceState = input.guidanceState ?? { ...DEFAULT_GUIDANCE_STATE };
+    const guidanceState = parseGuidanceState(input.guidanceState);
     const hardRisk = runHardRiskGuard(input.text);
     const analyzed = hardRisk.level === "high" || hardRisk.level === "imminent"
       ? null
@@ -111,6 +116,15 @@ export class SupportOrchestrator {
       guidanceState,
     });
     const intent = detectConversationIntent(input.text, guidanceState);
+    const skillResolution = resolveTopicSkill({
+      text: input.text,
+      recentContext: input.recentContext,
+      riskLevel,
+      plan: routed.plan,
+      state: guidanceState.topicSkill,
+      astrologyEnabled: this.env.ASTROLOGY_SKILL_V1,
+    });
+    const nextTopicState = nextTopicSkillState(guidanceState.topicSkill, skillResolution, guidanceState.turnIndex + 1);
 
     if (riskLevel === "high" || riskLevel === "imminent") {
       const finalReply = highRiskResponse(riskLevel, this.env.RESEARCH_CONTACT);
@@ -132,14 +146,32 @@ export class SupportOrchestrator {
         signalSource: analyzed ? "cloud_model" : "local_fallback",
         responseSource: "static_safety",
         characterVersion: CHARACTER_VERSION,
-        nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent: "none" }),
+        skillResolution,
+        skillDiagnostics: buildSkillDiagnostics(skillResolution, []),
+        nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent: "none", topicSkill: nextTopicState }),
+      };
+    }
+
+    const blockedSkillReply = skillResolution.status === "blocked"
+      && skillResolution.reasonCodes.some((code) => ["ASTROLOGY_USER_OPTOUT", "ASTROLOGY_HIGH_STAKES_BOUNDARY", "ASTROLOGY_PRECISE_CHART_UNAVAILABLE"].includes(code))
+      ? fallbackForSkill(input.text, skillResolution)
+      : null;
+    if (blockedSkillReply) {
+      return {
+        signals, rawState, state, emotionHypothesis, riskLevel, ruleCodes: hardRisk.ruleCodes,
+        plan: routed.plan, nextSpiritTurnCount: routed.nextSpiritTurnCount, nextCompanionLockTurns: routed.nextCompanionLockTurns,
+        reply: blockedSkillReply, actionDraft: null, memoryCandidates: [], memoryRelationCandidates: [],
+        metrics: analyzed ? [analyzed.metrics] : [], signalSource: analyzed ? "cloud_model" : "local_fallback",
+        responseSource: "local_fallback", characterVersion: CHARACTER_VERSION,
+        skillResolution, skillDiagnostics: buildSkillDiagnostics(skillResolution, []),
+        nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply: blockedSkillReply, deliveredAccent: "none", topicSkill: nextTopicState }),
       };
     }
 
     const emotionPrompt = this.env.EMOTION_INFERENCE_V2
       ? { emotionHypothesis, emotionExpression: resolveEmotionExpressionBrief(emotionHypothesis, state) }
       : {};
-    const responseStyle = resolveResponseStyle({ plan: routed.plan, state, recentContext: input.recentContext, userText: input.text, riskLevel, guidanceState, expressionV2Enabled: this.env.EXPRESSION_STYLE_V2, expressionClarityScore: signals.expressionClarityScore });
+    const responseStyle = resolveResponseStyle({ plan: routed.plan, state, recentContext: input.recentContext, userText: input.text, riskLevel, guidanceState, interactionMode: skillResolution.interactionMode, expressionV2Enabled: this.env.EXPRESSION_STYLE_V2, expressionClarityScore: signals.expressionClarityScore });
     const prompt = composeCharacterPrompt({
       plan: routed.plan,
       state,
@@ -149,21 +181,25 @@ export class SupportOrchestrator {
       ...(input.actionContext ? { actionContext: input.actionContext } : {}),
       recentContext: input.recentContext,
       userText: input.text,
+      skill: skillResolution,
     });
     const [generated, extracted] = await Promise.all([
       this.gateway.generate(prompt),
-      this.gateway.extractMemories(input.text, input.memories),
+      skillResolution.skillId === "astrology" ? Promise.resolve(null) : this.gateway.extractMemories(input.text, input.memories),
     ]);
     const generationFailure = generated ? null : this.gateway.getLastFailure("generate");
-    const fallback = fallbackReply({
-      plan: routed.plan,
-      style: responseStyle,
-      state,
-      userText: input.text,
-      recentContext: input.recentContext,
-      ...(input.actionContext ? { actionContext: input.actionContext } : {}),
-      ...emotionPrompt,
-    });
+    const skillFallback = skillResolution.status === "active" ? fallbackForSkill(input.text, skillResolution) : null;
+    const fallback = skillFallback
+      ? { reply: skillFallback, actionDraft: null }
+      : fallbackReply({
+          plan: routed.plan,
+          style: responseStyle,
+          state,
+          userText: input.text,
+          recentContext: input.recentContext,
+          ...(input.actionContext ? { actionContext: input.actionContext } : {}),
+          ...emotionPrompt,
+        });
     let selected = generated;
     let validationStatus: ResponseStyleDiagnostics["validationStatus"] = generated ? "passed" : "fallback";
     let violationCodes: string[] = [];
@@ -182,6 +218,7 @@ export class SupportOrchestrator {
         ...(this.env.EMOTION_INFERENCE_V2 ? { emotionHypothesis } : {}),
         userText: input.text,
         recentContext: input.recentContext,
+        skill: skillResolution,
       });
       violationCodes = initialValidation.violations.map((item) => item.code);
       initialViolationCodes = [...violationCodes];
@@ -199,6 +236,7 @@ export class SupportOrchestrator {
             ...(this.env.EMOTION_INFERENCE_V2 ? { emotionHypothesis } : {}),
             userText: input.text,
             recentContext: input.recentContext,
+            skill: skillResolution,
           });
           violationCodes = repairedValidation.violations.map((item) => item.code);
           repairViolationCodes = [...violationCodes];
@@ -228,6 +266,7 @@ export class SupportOrchestrator {
         ...(this.env.EMOTION_INFERENCE_V2 ? { emotionHypothesis } : {}),
         userText: input.text,
         recentContext: input.recentContext,
+        skill: skillResolution,
       });
       violationCodes = fallbackValidation.violations.map((item) => item.code);
     }
@@ -245,13 +284,15 @@ export class SupportOrchestrator {
       nextSpiritTurnCount: routed.nextSpiritTurnCount,
       nextCompanionLockTurns: routed.nextCompanionLockTurns,
       reply: finalReply,
-      actionDraft: routed.plan.allowActionDraft ? (selected?.actionDraft ?? fallback.actionDraft) : null,
+      actionDraft: skillResolution.status === "active" ? null : routed.plan.allowActionDraft ? (selected?.actionDraft ?? fallback.actionDraft) : null,
       memoryCandidates: filterMemoryCandidates(extracted?.memories ?? [], input.text),
       memoryRelationCandidates: extracted?.relations ?? [],
       metrics: [analyzed?.metrics, generated?.metrics, repairMetric, extracted?.metrics].filter((metric): metric is LlmMetrics => Boolean(metric)),
       signalSource: analyzed ? "cloud_model" : "local_fallback",
       responseSource: selected ? "cloud_model" : "local_fallback",
       characterVersion: CHARACTER_VERSION,
+      skillResolution,
+      skillDiagnostics: buildSkillDiagnostics(skillResolution, violationCodes),
       responseStyle,
       responseStyleDiagnostics: {
         profile: responseStyle.profile,
@@ -270,7 +311,7 @@ export class SupportOrchestrator {
         } : {}),
         styleVersion: responseStyle.styleVersion,
       },
-      nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent }),
+      nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent, topicSkill: nextTopicState }),
     };
   }
 }

@@ -6,7 +6,7 @@ import type {
   EmotionCorrectionLabelV1,
   EmotionCorrectionV1,
   EmotionHypothesisV1,
-  GuidanceStateV1,
+  GuidanceState,
   MemoryCandidate,
   MemoryDecisionV2,
   MemoryRelationCandidateV1,
@@ -75,7 +75,7 @@ export class DemoStore {
   activeSpirit: ActiveSpirit = "deep_tide";
   spiritTurnCount = 0;
   companionLockTurns = 0;
-  guidanceState: GuidanceStateV1 = { ...DEFAULT_GUIDANCE_STATE };
+  guidanceState: GuidanceState = { ...DEFAULT_GUIDANCE_STATE };
   messages: PublicMessage[] = [];
   actions: PublicActionItem[] = [];
   followups: PublicFollowup[] = [];

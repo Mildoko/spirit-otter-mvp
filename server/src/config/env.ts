@@ -39,6 +39,7 @@ const envSchema = z.object({
   SCENE_WORLD_V1: booleanFromStringDefaultFalse,
   AUDIO_V1: booleanFromStringDefaultFalse,
   MEMORY_V2: booleanFromStringDefaultFalse,
+  ASTROLOGY_SKILL_V1: booleanFromStringDefaultFalse,
   AZURE_SPEECH_KEY: z.string().default(""),
   AZURE_SPEECH_REGION: z.string().default(""),
   AZURE_SPEECH_VOICE: z.string().default("zh-CN-XiaoxiaoNeural"),

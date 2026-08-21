@@ -12,6 +12,8 @@ export type TurnStatus = "reserved" | "processing" | "completed" | "failed";
 export type ActionStatus = "draft" | "confirmed" | "completed" | "deferred" | "deleted";
 export type RuntimeMode = "full" | "demo" | "lab";
 export type ResponseSource = "cloud_model" | "local_fallback" | "static_safety";
+export type TopicSkillId = "astrology";
+export type InteractionMode = "core_support" | "casual_topic";
 export type AgentIdV1 = "spirit_otter";
 export type AudioSfxV1 = "reply_ripple" | "invite_chime" | "none";
 export type SoundscapePolicyV1 = "normal" | "reduced" | "silent";
@@ -193,8 +195,7 @@ export interface CharacterDiagnostics {
   responseStyle?: ResponseStyleDiagnostics;
 }
 
-export interface GuidanceStateV1 {
-  schemaVersion: 1;
+interface GuidanceStateBase {
   turnIndex: number;
   clarifyAttemptCount: number;
   transitionInvitePending: boolean;
@@ -207,6 +208,24 @@ export interface GuidanceStateV1 {
   lastExpressionClarity: number | null;
   lastProgressReadiness: number | null;
 }
+
+export interface GuidanceStateV1 extends GuidanceStateBase {
+  schemaVersion: 1;
+}
+
+export interface TopicSkillGuidanceStateV1 {
+  activeSkillId: TopicSkillId | null;
+  activeVersion: string | null;
+  lastActivatedTurn: number | null;
+  suspendedSkillIds: TopicSkillId[];
+}
+
+export interface GuidanceStateV2 extends GuidanceStateBase {
+  schemaVersion: 2;
+  topicSkill: TopicSkillGuidanceStateV1;
+}
+
+export type GuidanceState = GuidanceStateV1 | GuidanceStateV2;
 
 export interface PublicMessage {
   id: string;

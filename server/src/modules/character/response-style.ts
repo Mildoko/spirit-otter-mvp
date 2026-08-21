@@ -1,4 +1,4 @@
-import type { EmotionState, ExpressiveAccent, GuidanceStateV1, ResponsePlan, ResponseStyleProfile, ResponseStyleResolution, RiskLevel } from "@otter/shared";
+import type { EmotionState, ExpressiveAccent, GuidanceState, InteractionMode, ResponsePlan, ResponseStyleProfile, ResponseStyleResolution, RiskLevel } from "@otter/shared";
 import { z } from "zod";
 import { DEFAULT_GUIDANCE_STATE } from "../support/guidance-state.js";
 
@@ -40,7 +40,8 @@ export function detectRecentPatterns(recentContext: string[]): string[] {
   return [...avoided];
 }
 
-function outlineFor(plan: ResponsePlan, profile: ResponseStyleProfile): string[] {
+function outlineFor(plan: ResponsePlan, profile: ResponseStyleProfile, interactionMode: InteractionMode): string[] {
+  if (interactionMode === "casual_topic") return ["先直接回答具体话题", "给一个有信息量但不下定论的观察", "留一个自然的继续空间"];
   if (["clarify_low_signal", "clarify_then_invite"].includes(plan.primaryStrategy)) return ["承认此刻难以说清", "只给一种低门槛表达脚手架", profile.questionBudget ? "最多一个核心问题" : "不用问题逼用户回答"];
   if (plan.primaryStrategy === "pause_low_signal") return ["停止追问", "允许暂停或只留一个无需回答的选项"];
   if (plan.transitionStyle === "blend_to_shore") return ["先具体接话", "只指出一个阻塞点", "发出一次可拒绝的邀请；本轮不创建行动"];
@@ -50,7 +51,7 @@ function outlineFor(plan: ResponsePlan, profile: ResponseStyleProfile): string[]
 }
 
 const turnsSince = (current: number, previous: number | null) => previous === null ? Number.POSITIVE_INFINITY : current - previous;
-export function selectExpressiveAccent(input: { plan: ResponsePlan; state: EmotionState; riskLevel: RiskLevel; userText: string; guidanceState: GuidanceStateV1; enabled: boolean; expressionClarityScore?: number }): { accent: ExpressiveAccent; reason: string } {
+export function selectExpressiveAccent(input: { plan: ResponsePlan; state: EmotionState; riskLevel: RiskLevel; userText: string; guidanceState: GuidanceState; enabled: boolean; expressionClarityScore?: number }): { accent: ExpressiveAccent; reason: string } {
   if (!input.enabled) return { accent: "none", reason: "EXPRESSION_V2_DISABLED" };
   if (input.expressionClarityScore !== undefined && input.expressionClarityScore < 0.45) return { accent: "none", reason: "LOW_CLARITY_NO_ACCENT" };
   if (["clarify_low_signal", "clarify_then_invite", "pause_low_signal"].includes(input.plan.primaryStrategy)) return { accent: "none", reason: "LOW_SIGNAL_NO_ACCENT" };
@@ -65,13 +66,18 @@ export function selectExpressiveAccent(input: { plan: ResponsePlan; state: Emoti
   return { accent: "none", reason: "NO_SEMANTIC_ACCENT_MATCH" };
 }
 
-export function resolveResponseStyle(input: { plan: ResponsePlan; state: EmotionState; recentContext: string[]; userText: string; riskLevel: RiskLevel; guidanceState?: GuidanceStateV1; expressionV2Enabled?: boolean; expressionClarityScore?: number }): ResponseStyleResolution {
+export function resolveResponseStyle(input: { plan: ResponsePlan; state: EmotionState; recentContext: string[]; userText: string; riskLevel: RiskLevel; guidanceState?: GuidanceState; expressionV2Enabled?: boolean; expressionClarityScore?: number; interactionMode?: InteractionMode }): ResponseStyleResolution {
   const { plan, state } = input;
   const guidanceState = input.guidanceState ?? DEFAULT_GUIDANCE_STATE;
   const base = plan.transitionStyle === "steady" ? spiritStyleDefaults[plan.activeSpirit] : spiritStyleDefaults[plan.transitionStyle];
   const profile: ResponseStyleProfile = { ...base };
+  const interactionMode = input.interactionMode ?? "core_support";
   const reasonCodes = [`SPIRIT_${plan.activeSpirit.toUpperCase()}`, `TRANSITION_${plan.transitionStyle.toUpperCase()}`];
   const avoidPhrases = detectRecentPatterns(input.recentContext);
+  if (interactionMode === "casual_topic") {
+    Object.assign(profile, { pace: "direct", sentenceLength: "medium", responseLength: "normal", warmth: "warm", reflectionDepth: "fact", questionBudget: 1, adviceDirectness: "none", uncertainty: "medium", conversationality: "natural", sentenceRhythm: "mixed", expressiveAccent: "none" });
+    reasonCodes.push("CASUAL_TOPIC_DIRECT_ANSWER");
+  }
   const explicitQuestionBoundary = guidanceState.userRequestedNoQuestions || /(?:不要|别|不用|不想|先别).{0,6}(?:问|问题)/u.test(input.userText);
   if (!plan.allowActionDraft || plan.forbiddenContent.some((item) => /建议|步骤|行动|任务/u.test(item))) profile.adviceDirectness = "none";
   if (guidanceState.userRequestedNoQuestions || plan.forbiddenContent.some((item) => item === "提问")) profile.questionBudget = 0;
@@ -96,8 +102,10 @@ export function resolveResponseStyle(input: { plan: ResponsePlan; state: Emotion
     profile.questionBudget = 1;
     reasonCodes.push("ELEVATED_SAFETY_CHECK_REQUIRED");
   }
-  const selected = selectExpressiveAccent({ plan, state, riskLevel: input.riskLevel, userText: input.userText, guidanceState, enabled: input.expressionV2Enabled ?? true, ...(input.expressionClarityScore !== undefined ? { expressionClarityScore: input.expressionClarityScore } : {}) });
+  const selected = interactionMode === "casual_topic"
+    ? { accent: "none" as const, reason: "CASUAL_TOPIC_NO_DECORATIVE_ACCENT" }
+    : selectExpressiveAccent({ plan, state, riskLevel: input.riskLevel, userText: input.userText, guidanceState, enabled: input.expressionV2Enabled ?? true, ...(input.expressionClarityScore !== undefined ? { expressionClarityScore: input.expressionClarityScore } : {}) });
   if (profile.conversationality !== "restrained") profile.expressiveAccent = selected.accent;
   reasonCodes.push(selected.reason);
-  return responseStyleResolutionSchema.parse({ profile, reasonCodes, avoidPhrases, replyOutline: outlineFor(plan, profile), styleVersion: RESPONSE_STYLE_VERSION });
+  return responseStyleResolutionSchema.parse({ profile, reasonCodes, avoidPhrases, replyOutline: outlineFor(plan, profile, interactionMode), styleVersion: RESPONSE_STYLE_VERSION });
 }

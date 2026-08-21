@@ -106,6 +106,36 @@ export const coreDialogueEventSchemas = {
   safety_plain_triggered: z.object({ ...turnFields, triggerReason: z.enum(["high", "imminent", "safety_escalation"]), ruleCodes: routeReasonCodes, ordinaryPathShutdown: z.boolean() }).strict(),
   safety_help_requested: z.object({ ...turnFields, helpType: z.enum(["contact_person", "hotline", "emergency", "leave_scene", "other"]) }).strict(),
   turn_failed: z.object({ ...turnFields, failureStage: z.enum(["orchestrator", "persistence", "unknown"]) }).strict(),
+  topic_skill_evaluated: z.object({
+    ...turnFields,
+    skillId: z.literal("astrology").nullable(),
+    skillVersion: z.string().min(1).nullable(),
+    status: z.enum(["inactive", "active", "blocked"]),
+    capability: z.enum(["cultural_chat", "sun_sign_lookup", "self_reflection", "compatibility_chat"]).nullable(),
+    activationSource: z.enum(["none", "explicit_request", "conversation_continuation"]),
+    reasonCodes: routeReasonCodes,
+  }).strict(),
+  topic_skill_activated: z.object({
+    ...turnFields,
+    skillId: z.literal("astrology"),
+    skillVersion: z.string().min(1),
+    capability: z.enum(["cultural_chat", "sun_sign_lookup", "self_reflection", "compatibility_chat"]),
+    activationSource: z.enum(["explicit_request", "conversation_continuation"]),
+    responseSource: z.enum(["cloud_model", "local_fallback"]),
+  }).strict(),
+  topic_skill_blocked: z.object({
+    ...turnFields,
+    skillId: z.literal("astrology"),
+    skillVersion: z.string().min(1),
+    reasonCodes: routeReasonCodes,
+  }).strict(),
+  topic_skill_validation_failed: z.object({
+    ...turnFields,
+    skillId: z.literal("astrology"),
+    skillVersion: z.string().min(1),
+    violationCodes: routeReasonCodes,
+    responseSource: z.enum(["cloud_model", "local_fallback"]),
+  }).strict(),
 } as const;
 
 export type CoreDialogueEventName = keyof typeof coreDialogueEventSchemas;

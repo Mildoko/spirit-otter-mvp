@@ -7,6 +7,7 @@ const forbiddenPatterns = [
   /(?:性取向|同性恋|双性恋|跨性别|宗教信仰|政治立场|种族|艾滋|怀孕|流产|性侵|虐待经历)/i,
   /(?:只有澜泊|离不开澜泊|依赖澜泊|只有 tata|离不开 tata|依赖 tata|唯一理解|最亲密|忠诚度|亲密度)/i,
   /(?:忽略.{0,8}(?:规则|指令)|system prompt|开发者消息|泄露提示词)/i,
+  /(?:出生|生日|生于).{0,12}(?:\d{1,2}[月/.\-]\d{1,2}|上午|下午|凌晨|点|时)|(?:白羊|金牛|双子|巨蟹|狮子|处女|天秤|天蝎|射手|摩羯|水瓶|双鱼)(?:座)?/i,
 ];
 
 const inferableKinds = new Set<MemoryCandidate["kind"]>(["episode", "relationship_milestone"]);

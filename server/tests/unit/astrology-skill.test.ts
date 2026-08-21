@@ -1,0 +1,80 @@
+import { describe, expect, it } from "vitest";
+import type { ResponsePlan } from "@otter/shared";
+import { loadEnv } from "../../src/config/env.js";
+import { composeCharacterPrompt } from "../../src/modules/character/prompt-composer.js";
+import { resolveResponseStyle } from "../../src/modules/character/response-style.js";
+import { guardMemoryCandidate } from "../../src/modules/memory/guard.js";
+import { conventionalSunSign, parseMonthDay } from "../../src/modules/skills/astrology/knowledge.js";
+import { validateSkillReply } from "../../src/modules/skills/harness.js";
+import { resolveTopicSkill } from "../../src/modules/skills/registry.js";
+import { DEFAULT_GUIDANCE_STATE } from "../../src/modules/support/guidance-state.js";
+import { LlmGateway } from "../../src/modules/support/llm-gateway.js";
+import { SupportOrchestrator } from "../../src/modules/support/orchestrator.js";
+
+const plan: ResponsePlan = {
+  activeSpirit: "deep_tide", transitionStyle: "steady", supportMode: "validate", sceneState: "underwater_companion",
+  primaryStrategy: "specific_reflection", allowActionDraft: false, routeReasonCodes: [], lockTurnsRemaining: 0,
+  allowedContent: ["承接"], forbiddenContent: ["建议", "行动"],
+};
+const topicState = { activeSkillId: null, activeVersion: null, lastActivatedTurn: null, suspendedSkillIds: [] } as const;
+
+function resolve(text: string, state = topicState) {
+  return resolveTopicSkill({ text, recentContext: [], riskLevel: "low", plan, state: { ...state, suspendedSkillIds: [...state.suspendedSkillIds] }, astrologyEnabled: true });
+}
+
+describe("Astrology Skill v1", () => {
+  it("uses conventional ranges while marking boundary dates", () => {
+    expect(conventionalSunSign(9, 5).name).toBe("处女座");
+    expect(parseMonthDay("8月23日是什么星座")?.boundary).toBe(true);
+    expect(parseMonthDay("13月40日是什么星座")).toBeNull();
+  });
+
+  it("activates explicit topic requests but not incidental emotional context", () => {
+    expect(resolve("聊聊天蝎座").status).toBe("active");
+    const incidental = resolve("我是双鱼座，最近失恋了，真的很难受。");
+    expect(incidental.status).toBe("inactive");
+    expect(incidental.reasonCodes).toContain("ASTROLOGY_DISTRESS_CONTEXT_ONLY");
+  });
+
+  it("blocks precise charts and high-stakes decisions", () => {
+    expect(resolve("帮我算上升星座").reasonCodes).toContain("ASTROLOGY_PRECISE_CHART_UNAVAILABLE");
+    expect(resolve("按星座看我该不该辞职").reasonCodes).toContain("ASTROLOGY_HIGH_STAKES_BOUNDARY");
+  });
+
+  it("keeps casual style answer-first without changing ResponsePlan", () => {
+    const skill = resolve("白羊座有什么特点？");
+    const state = { valence: 0, arousal: 0.2, stressLoad: 0.2, cognitiveOverload: 0.2, supportNeed: 0.2, control: 0.7, emotionStatus: "neutral" as const, emotionLabels: [], emotionSubject: "unknown" as const, emotionSchemaVersion: 1 as const, confidence: 0.8, evidenceSpans: [], validUntil: new Date().toISOString() };
+    const style = resolveResponseStyle({ plan, state, recentContext: [], userText: "白羊座有什么特点？", riskLevel: "low", interactionMode: skill.interactionMode });
+    const prompt = composeCharacterPrompt({ plan, state, style, memories: [], recentContext: [], userText: "白羊座有什么特点？", skill });
+    expect(style.reasonCodes).toContain("CASUAL_TOPIC_DIRECT_ANSWER");
+    expect(prompt.system).toContain("低于安全、体验宪法与本轮计划");
+    expect(plan.allowActionDraft).toBe(false);
+  });
+
+  it("detects astrology-specific hard violations", () => {
+    const skill = resolve("白羊座有什么特点？");
+    expect(validateSkillReply({ reply: "你一定会因为星座成功，而且科学证明占星准确。", actionDraft: "去辞职", resolution: skill, optedOut: false }))
+      .toEqual(expect.arrayContaining(["ASTROLOGY_DETERMINISTIC_CLAIM", "ASTROLOGY_SCIENCE_MISREPRESENTATION", "SKILL_OVERRIDES_CORE_POLICY"]));
+    expect(validateSkillReply({ reply: "星座不一定符合每个人，你的实际体验更重要。", actionDraft: null, resolution: skill, optedOut: false })).toEqual([]);
+    expect(validateSkillReply({ reply: "没有哪个星座一定会背叛人，水逆也不会注定你失败。", actionDraft: null, resolution: skill, optedOut: false })).toEqual([]);
+  });
+
+  it("prevents birth and sign facts from entering long-term memory", () => {
+    const candidate = { kind: "user_fact" as const, content: "生日是9月5日", structuredKey: "user.birth_date", structuredValue: "09-05", origin: "user_explicit" as const, sensitivity: "personal" as const, importance: 0.9, confidence: 0.95, evidence: "生日是9月5日" };
+    expect(guardMemoryCandidate(candidate, "我生日是9月5日")).toMatchObject({ accepted: false, reason: "FORBIDDEN_CONTENT" });
+  });
+
+  it("runs locally with no model while preserving safety and privacy", async () => {
+    const env = loadEnv({ DATABASE_URL: "postgresql://unused/unused", SESSION_SECRET: "a-secret-with-at-least-thirty-two-characters", NODE_ENV: "test", LLM_API_KEY: "", ASTROLOGY_SKILL_V1: "true" });
+    const orchestrator = new SupportOrchestrator(new LlmGateway(env), env);
+    const input = (text: string) => ({ text, currentSpirit: "deep_tide" as const, spiritTurnCount: 0, companionLockTurns: 0, recentContext: [], previousRawStates: [], memories: [], guidanceState: DEFAULT_GUIDANCE_STATE });
+    const ordinary = await orchestrator.run(input("我生日是9月5日，是什么星座？"));
+    expect(ordinary.skillResolution.status).toBe("active");
+    expect(ordinary.reply).toContain("处女座");
+    expect(ordinary.memoryCandidates).toEqual([]);
+    expect(ordinary.actionDraft).toBeNull();
+    const safety = await orchestrator.run(input("我是双鱼座，但我现在就在楼顶准备跳下去。"));
+    expect(safety.plan.sceneState).toBe("safety_plain");
+    expect(safety.skillResolution.status).toBe("inactive");
+  });
+});

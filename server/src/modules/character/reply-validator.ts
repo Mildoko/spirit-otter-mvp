@@ -1,5 +1,7 @@
 import type { EmotionHypothesisV1, EmotionLabelV1, ResponsePlan, ResponseStyleResolution } from "@otter/shared";
 import { adviceMarkers, aphorismMarkers, bannedReplyPhrases, dependencyPhrases, detectDeliveredAccents, diagnosisPhrases, everydayMetaphorMarkers, mentorPhrases, waterMetaphorMarkers } from "./language-registry.js";
+import { validateSkillReply } from "../skills/harness.js";
+import type { SkillResolution } from "../skills/types.js";
 
 export type ReplyViolationSeverity = "hard" | "soft";
 export interface ReplyViolation { code: string; severity: ReplyViolationSeverity }
@@ -52,6 +54,7 @@ export function validateGeneratedReply(input: {
   emotionHypothesis?: EmotionHypothesisV1;
   userText: string;
   recentContext: string[];
+  skill?: SkillResolution;
 }): ReplyValidationResult {
   const { reply, actionDraft, plan, style } = input;
   const violations: ReplyViolation[] = [];
@@ -63,7 +66,7 @@ export function validateGeneratedReply(input: {
   const metaphorCount = [...waterMetaphorMarkers, ...everydayMetaphorMarkers].filter((marker) => reply.includes(marker)).length;
   const deliveredAccents = detectDeliveredAccents(reply);
   const emotionHypothesis = input.emotionHypothesis;
-  const assertedLabels = assertedEmotionLabels(reply);
+  const assertedLabels = assertedEmotionLabels(reply).filter((label) => !(input.skill?.interactionMode === "casual_topic" && label === "interest"));
   const supportedLabels = new Set(emotionHypothesis?.labels.map((item) => item.label) ?? []);
 
   if (bannedReplyPhrases.some((phrase) => reply.includes(phrase))) add("BANNED_PHRASE", "hard");
@@ -116,6 +119,9 @@ export function validateGeneratedReply(input: {
   if (/(?:综上所述|总而言之|从你的描述来看|首先.{0,10}其次)/u.test(reply)) add("FORMAL_SUMMARY_TONE", "soft");
   if (/(嗯嗯|其实吧|怎么说呢).*(?:嗯嗯|其实吧|怎么说呢)/u.test(reply)) add("REPEATED_FILLER", "soft");
   if (["clarify_low_signal", "clarify_then_invite"].includes(plan.primaryStrategy) && !/(?:一个词|一小段|今天|刚才|更像|选一个|说不清|不用完整)/u.test(reply)) add("LOW_SIGNAL_SCAFFOLD_MISSING", "soft");
+  if (input.skill) {
+    for (const code of validateSkillReply({ reply, actionDraft, resolution: input.skill, optedOut: input.skill.reasonCodes.includes("ASTROLOGY_USER_OPTOUT") })) add(code, "hard");
+  }
 
   return {
     ok: violations.length === 0,

@@ -18,6 +18,9 @@
     "test:integration": "npm run test:integration -w @otter/server",
     "test:eval:core": "npm run test:eval:core -w @otter/server",
     "test:eval:core:model": "npm run test:eval:core:model -w @otter/server",
+    "test:eval:skill:astrology": "npm run test:eval:skill:astrology -w @otter/server",
+    "test:eval:skill:astrology:model": "npm run test:eval:skill:astrology:model -w @otter/server",
+    "review:skill:astrology": "npm run review:skill:astrology -w @otter/server",
     "typecheck": "npm run typecheck -w @otter/shared && npm run typecheck -w @otter/server && npm run typecheck -w @otter/web",
     "db:generate": "npm run db:generate -w @otter/server",
     "db:migrate": "npm run db:migrate -w @otter/server",
@@ -48,7 +51,7 @@
     ,"test:model:memory": "npm run build -w @otter/shared && npm run build -w @otter/server && npm run test:model:memory -w @otter/server"
     ,"test:e2e:demo": "node scripts/run-demo-e2e.mjs"
     ,"test:e2e:full": "node scripts/run-full-e2e.mjs"
-    ,"prepackage:testable": "npm run typecheck && npm test && npm run test:eval:core && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
+    ,"prepackage:testable": "npm run typecheck && npm test && npm run test:eval:core && npm run test:eval:skill:astrology && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
     ,"package:testable": "node scripts/package-testable.mjs"
   },
   "devDependencies": {

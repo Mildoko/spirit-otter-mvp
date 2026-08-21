@@ -1,4 +1,4 @@
-import type { ActiveSpirit, EmotionState, GuidanceStateV1, RawSignals, ResponsePlan, RiskLevel } from "@otter/shared";
+import type { ActiveSpirit, EmotionState, GuidanceState, RawSignals, ResponsePlan, RiskLevel } from "@otter/shared";
 import { DEFAULT_GUIDANCE_STATE } from "./guidance-state.js";
 
 export interface ConversationIntent {
@@ -24,7 +24,7 @@ export interface PolicyInput {
   signals: RawSignals;
   previousArousal?: number;
   wasRecentlySupported?: boolean;
-  guidanceState?: GuidanceStateV1;
+  guidanceState?: GuidanceState;
 }
 
 export interface PolicyResult {
@@ -73,7 +73,7 @@ const declineTransitionPatterns = [/(?:先不|不要|不想|算了|不用).{0,8}
 const noQuestionPatterns = [/(?:不要|别|不用|先别|不想).{0,6}(?:问|问题|追问)/u, /(?:只|先).{0,5}(?:听我说|陪着|让我说)/u];
 const allowQuestionPatterns = [/(?:可以|你可以|允许).{0,5}(?:问|提问)/u, /(?:你问吧|可以问了)/u];
 
-export function detectConversationIntent(text: string, guidanceState: GuidanceStateV1 = DEFAULT_GUIDANCE_STATE): ConversationIntent {
+export function detectConversationIntent(text: string, guidanceState: GuidanceState = DEFAULT_GUIDANCE_STATE): ConversationIntent {
   const refuseAdvice = refuseAdvicePatterns.some((pattern) => pattern.test(text));
   const requestAdvice = !refuseAdvice && requestAdvicePatterns.some((pattern) => pattern.test(text));
   const requestsLighterAction = /(?:如果|要是)?.{0,8}(?:再|更).{0,4}(?:轻|小|简单).{0,10}(?:愿意|可以|试)/u.test(text);

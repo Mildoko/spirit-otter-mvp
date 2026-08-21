@@ -26,6 +26,7 @@ jobs:
       - run: npm test
       - run: npm run test:experience
       - run: npm run test:eval:core
+      - run: npm run test:eval:skill:astrology
       - run: npm run build
       - name: Upload failure diagnostics
         if: failure()

@@ -13,11 +13,19 @@ const plan = (primaryStrategy: string): ResponsePlan => ({
 });
 const intent = { acceptedTransition: false, declinedTransition: false, requestNoQuestions: false, allowQuestions: false, directActionRequest: false };
 
-describe("GuidanceStateV1", () => {
+describe("GuidanceStateV2", () => {
   it("falls back safely for null, old, and invalid state", () => {
     expect(parseGuidanceState(null)).toEqual(DEFAULT_GUIDANCE_STATE);
     expect(parseGuidanceState({ schemaVersion: 0 })).toEqual(DEFAULT_GUIDANCE_STATE);
     expect(parseGuidanceState({ ...DEFAULT_GUIDANCE_STATE, turnIndex: -1 })).toEqual(DEFAULT_GUIDANCE_STATE);
+  });
+
+  it("migrates valid V1 state without inventing topic data", () => {
+    const legacy = { ...DEFAULT_GUIDANCE_STATE, schemaVersion: 1 as const };
+    const { topicSkill: _removed, ...v1 } = legacy;
+    const migrated = parseGuidanceState(v1);
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.topicSkill).toEqual({ activeSkillId: null, activeVersion: null, lastActivatedTurn: null, suspendedSkillIds: [] });
   });
 
   it("stops clarification at two attempts and resets after progress", () => {

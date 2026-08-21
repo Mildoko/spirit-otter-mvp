@@ -40,6 +40,11 @@ describe("runtime mode environment", () => {
     expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: "demo", MEMORY_V2: "false" }).MEMORY_V2).toBe(false);
   });
 
+  it("keeps astrology skill off unless explicitly enabled", () => {
+    expect(loadEnv(base).ASTROLOGY_SKILL_V1).toBe(false);
+    expect(loadEnv({ ...base, ASTROLOGY_SKILL_V1: "true" }).ASTROLOGY_SKILL_V1).toBe(true);
+  });
+
   it("maps legacy local test mode to lab", () => {
     expect(loadEnv({ ...base, LOCAL_TEST_MODE: "true" }).OTTER_RUNTIME_MODE).toBe("lab");
   });

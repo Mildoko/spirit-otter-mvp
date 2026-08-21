@@ -1,4 +1,4 @@
-import type { ExpressiveAccent, GuidanceStateV1, RawSignals, ResponsePlan } from "@otter/shared";
+import type { ExpressiveAccent, GuidanceState, GuidanceStateV2, RawSignals, ResponsePlan, TopicSkillGuidanceStateV1 } from "@otter/shared";
 import { z } from "zod";
 
 export const guidanceStateV1Schema = z.object({
@@ -16,8 +16,27 @@ export const guidanceStateV1Schema = z.object({
   lastProgressReadiness: z.number().min(0).max(1).nullable(),
 }).strict();
 
-export const DEFAULT_GUIDANCE_STATE: GuidanceStateV1 = Object.freeze({
-  schemaVersion: 1,
+const topicSkillStateSchema = z.object({
+  activeSkillId: z.literal("astrology").nullable(),
+  activeVersion: z.string().min(1).nullable(),
+  lastActivatedTurn: z.number().int().min(0).nullable(),
+  suspendedSkillIds: z.array(z.literal("astrology")).max(1),
+}).strict();
+
+export const guidanceStateV2Schema = guidanceStateV1Schema.omit({ schemaVersion: true }).extend({
+  schemaVersion: z.literal(2),
+  topicSkill: topicSkillStateSchema,
+}).strict();
+
+export const DEFAULT_TOPIC_SKILL_STATE: TopicSkillGuidanceStateV1 = Object.freeze({
+  activeSkillId: null,
+  activeVersion: null,
+  lastActivatedTurn: null,
+  suspendedSkillIds: [],
+});
+
+export const DEFAULT_GUIDANCE_STATE: GuidanceStateV2 = Object.freeze({
+  schemaVersion: 2,
   turnIndex: 0,
   clarifyAttemptCount: 0,
   transitionInvitePending: false,
@@ -29,11 +48,15 @@ export const DEFAULT_GUIDANCE_STATE: GuidanceStateV1 = Object.freeze({
   lastHumorTurn: null,
   lastExpressionClarity: null,
   lastProgressReadiness: null,
+  topicSkill: DEFAULT_TOPIC_SKILL_STATE,
 });
 
-export function parseGuidanceState(value: unknown): GuidanceStateV1 {
-  const parsed = guidanceStateV1Schema.safeParse(value);
-  return parsed.success ? parsed.data : { ...DEFAULT_GUIDANCE_STATE };
+export function parseGuidanceState(value: unknown): GuidanceStateV2 {
+  const parsedV2 = guidanceStateV2Schema.safeParse(value);
+  if (parsedV2.success) return parsedV2.data;
+  const parsedV1 = guidanceStateV1Schema.safeParse(value);
+  if (parsedV1.success) return { ...parsedV1.data, schemaVersion: 2, topicSkill: { ...DEFAULT_TOPIC_SKILL_STATE, suspendedSkillIds: [] } };
+  return { ...DEFAULT_GUIDANCE_STATE, topicSkill: { ...DEFAULT_TOPIC_SKILL_STATE, suspendedSkillIds: [] } };
 }
 
 export interface GuidanceIntent {
@@ -45,13 +68,14 @@ export interface GuidanceIntent {
 }
 
 export function advanceGuidanceState(input: {
-  previous: GuidanceStateV1;
+  previous: GuidanceState;
   intent: GuidanceIntent;
   signals: RawSignals;
   plan: ResponsePlan;
   finalReply: string;
   deliveredAccent: ExpressiveAccent;
-}): GuidanceStateV1 {
+  topicSkill?: TopicSkillGuidanceStateV1;
+}): GuidanceStateV2 {
   const turnIndex = input.previous.turnIndex + 1;
   const clarification = ["clarify_low_signal", "clarify_then_invite"].includes(input.plan.primaryStrategy);
   const madeProgress = input.signals.expressionClarityScore >= 0.45 || input.intent.directActionRequest || input.intent.acceptedTransition;
@@ -65,7 +89,7 @@ export function advanceGuidanceState(input: {
     : input.intent.requestNoQuestions ? true : input.previous.userRequestedNoQuestions;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     turnIndex,
     clarifyAttemptCount,
     transitionInvitePending: invited && !transitionDeclined,
@@ -77,5 +101,6 @@ export function advanceGuidanceState(input: {
     lastHumorTurn: input.deliveredAccent === "dry_humor" ? turnIndex : input.previous.lastHumorTurn,
     lastExpressionClarity: input.signals.expressionClarityScore,
     lastProgressReadiness: input.signals.progressReadinessScore,
+    topicSkill: input.topicSkill ?? (input.previous.schemaVersion === 2 ? input.previous.topicSkill : { ...DEFAULT_TOPIC_SKILL_STATE, suspendedSkillIds: [] }),
   };
 }

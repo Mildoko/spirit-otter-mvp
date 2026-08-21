@@ -69,6 +69,58 @@ export function buildCompletedTurnEvents(input: {
     },
   ];
 
+  events.push({
+    eventName: "topic_skill_evaluated",
+    eventKey: `turn:${input.turnId}:topic_skill_evaluated`,
+    metadata: {
+      ...refs,
+      skillId: result.skillResolution.skillId,
+      skillVersion: result.skillResolution.skillVersion,
+      status: result.skillResolution.status,
+      capability: result.skillResolution.capability,
+      activationSource: result.skillResolution.activationSource,
+      reasonCodes: result.skillResolution.reasonCodes,
+    },
+    durationMs: input.durationMs,
+  });
+  if (result.skillResolution.status === "active" && result.skillResolution.skillId && result.skillResolution.skillVersion && result.skillResolution.capability) {
+    events.push({
+      eventName: "topic_skill_activated",
+      eventKey: `turn:${input.turnId}:topic_skill_activated`,
+      metadata: {
+        ...refs,
+        skillId: result.skillResolution.skillId,
+        skillVersion: result.skillResolution.skillVersion,
+        capability: result.skillResolution.capability,
+        activationSource: result.skillResolution.activationSource === "none" ? "explicit_request" : result.skillResolution.activationSource,
+        responseSource: result.responseSource === "static_safety" ? "local_fallback" : result.responseSource,
+      },
+      durationMs: input.durationMs,
+    });
+  }
+  if (result.skillResolution.status === "blocked" && result.skillResolution.skillId && result.skillResolution.skillVersion) {
+    events.push({
+      eventName: "topic_skill_blocked",
+      eventKey: `turn:${input.turnId}:topic_skill_blocked`,
+      metadata: { ...refs, skillId: result.skillResolution.skillId, skillVersion: result.skillResolution.skillVersion, reasonCodes: result.skillResolution.reasonCodes },
+      durationMs: input.durationMs,
+    });
+  }
+  if (result.skillDiagnostics.violationCodes.length && result.skillDiagnostics.skillId && result.skillDiagnostics.skillVersion) {
+    events.push({
+      eventName: "topic_skill_validation_failed",
+      eventKey: `turn:${input.turnId}:topic_skill_validation_failed`,
+      metadata: {
+        ...refs,
+        skillId: result.skillDiagnostics.skillId,
+        skillVersion: result.skillDiagnostics.skillVersion,
+        violationCodes: result.skillDiagnostics.violationCodes,
+        responseSource: result.responseSource === "static_safety" ? "local_fallback" : result.responseSource,
+      },
+      durationMs: input.durationMs,
+    });
+  }
+
   if (result.plan.sceneState === "safety_plain") {
     events.push({
       eventName: "safety_plain_triggered",

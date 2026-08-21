@@ -1,4 +1,4 @@
-import type { ActiveSpirit, GuidanceStateV1, ResponseStyleDiagnostics, RiskLevel } from "@otter/shared";
+import type { ActiveSpirit, GuidanceState, ResponseStyleDiagnostics, RiskLevel } from "@otter/shared";
 import { DEFAULT_GUIDANCE_STATE } from "../modules/support/guidance-state.js";
 import { bannedReplyPhrases, dependencyPhrases, diagnosisPhrases, waterMetaphorMarkers } from "../modules/character/language-registry.js";
 import type { OrchestratorResult, SupportOrchestrator } from "../modules/support/orchestrator.js";
@@ -299,7 +299,7 @@ async function runMultiTurn(orchestrator: Pick<SupportOrchestrator, "run">, scri
   let spiritTurnCount = script.initialState.spiritTurnCount;
   let companionLockTurns = script.initialState.companionLockTurns;
   let recentContext = [...script.initialState.recentContext];
-  let guidanceState: GuidanceStateV1 = { ...DEFAULT_GUIDANCE_STATE };
+  let guidanceState: GuidanceState = { ...DEFAULT_GUIDANCE_STATE };
   let previousRawStates: OrchestratorResult["rawState"][] = [];
   let previousSmoothedState: OrchestratorResult["state"] | undefined;
   let actionContext = script.initialState.actionContext ? cleanActionContext(script.initialState.actionContext) : undefined;

@@ -19,6 +19,14 @@ function ordinaryResult(): OrchestratorResult {
     responseSource: "local_fallback",
     reply: "如果你愿意，我们可以只整理一个很小的范围；也可以先不整理。",
     actionDraft: null,
+    skillResolution: {
+      status: "inactive", skillId: null, skillVersion: null, interactionMode: "core_support", capability: null,
+      activationSource: "none", confidence: 0, reasonCodes: ["SKILL_DISABLED"], promptContext: null, suppressMemory: false,
+    },
+    skillDiagnostics: {
+      harnessVersion: "skill-harness-v1", skillId: null, skillVersion: null, status: "inactive", capability: null,
+      activationSource: "none", reasonCodes: ["SKILL_DISABLED"], violationCodes: [],
+    },
     plan: {
       activeSpirit: "shore_pick",
       supportMode: "clarify",
@@ -58,10 +66,31 @@ describe("Core Dialogue Event v2 contract", () => {
     });
     expect(events.map((event) => event.eventName)).toEqual(expect.arrayContaining([
       "risk_assessed", "transition_eligibility_evaluated", "support_turn_completed", "transition_invited",
+      "topic_skill_evaluated",
     ]));
     for (const event of events) {
       expect(() => parseCoreDialogueEventMetadata(event.eventName, event.metadata)).not.toThrow();
       expect(JSON.stringify(event.metadata)).not.toContain(ordinaryResult().reply);
+    }
+  });
+
+  it("records skill diagnostics without birth data or conversation text", () => {
+    const result = ordinaryResult();
+    result.skillResolution = {
+      status: "active", skillId: "astrology", skillVersion: "astrology-skill-v1", interactionMode: "casual_topic",
+      capability: "sun_sign_lookup", activationSource: "explicit_request", confidence: 0.98,
+      reasonCodes: ["ASTROLOGY_EXPLICIT_REQUEST"], promptContext: "private prompt context", suppressMemory: true,
+    };
+    result.skillDiagnostics = {
+      harnessVersion: "skill-harness-v1", skillId: "astrology", skillVersion: "astrology-skill-v1", status: "active",
+      capability: "sun_sign_lookup", activationSource: "explicit_request", reasonCodes: ["ASTROLOGY_EXPLICIT_REQUEST"], violationCodes: [],
+    };
+    const events = buildCompletedTurnEvents({ sessionId: "session_1", conversationId: "conversation_1", turnId: "turn_1", result, durationMs: 10 });
+    const skillEvents = events.filter((event) => event.eventName.startsWith("topic_skill_"));
+    expect(skillEvents.map((event) => event.eventName)).toContain("topic_skill_activated");
+    for (const event of skillEvents) {
+      expect(() => parseCoreDialogueEventMetadata(event.eventName, event.metadata)).not.toThrow();
+      expect(JSON.stringify(event.metadata)).not.toMatch(/9月5日|private prompt context|完整用户原文/u);
     }
   });
 

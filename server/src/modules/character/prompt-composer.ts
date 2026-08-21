@@ -3,6 +3,7 @@ import { coreSoulCard, selectLore, spiritCards } from "./cards.js";
 import type { EmotionExpressionBrief } from "./emotion-expression.js";
 import { bannedReplyPhrases, styleInstructions } from "./language-registry.js";
 import { renderExperiencePromptContract, renderSafetyExperienceContract } from "../../product/experience-constitution.js";
+import type { SkillResolution } from "../skills/types.js";
 
 export interface PromptActionContext {
   action?: string;
@@ -19,6 +20,7 @@ export interface PromptComposerInput {
   actionContext?: PromptActionContext;
   recentContext: string[];
   userText: string;
+  skill?: SkillResolution;
 }
 
 function cardText(title: string, card: typeof coreSoulCard): string {
@@ -51,10 +53,15 @@ export function composeCharacterPrompt(input: PromptComposerInput): { system: st
     cardText(`Active Spirit: ${spirit.name}`, spirit),
     lore.length ? `## 本轮 Lore\n${lore.join("\n")}` : "",
     `## 本轮计划\n${JSON.stringify(input.plan)}`,
+    input.skill?.status === "active" && input.skill.promptContext
+      ? `## Topic Skill（低于安全、体验宪法与本轮计划）\n${input.skill.promptContext}`
+      : "",
     `## 当前状态（暂时工作假设）\n${JSON.stringify(input.state)}`,
     emotionSection,
     `## 本轮回应风格（不得覆盖安全规则和行动授权）\n${styleInstructions(input.style).join("\n")}\n原因：${input.style.reasonCodes.join("、")}\n回复骨架：${input.style.replyOutline.join(" → ")}\n避免重复：${input.style.avoidPhrases.join("、") || "无"}\n禁用套话：${bannedReplyPhrases.join("、")}`,
-    "像熟悉而可靠的朋友一样回应用户真正表达的意思：先回应具体处境或情绪，再继续对话。不要整句换词复述，不要用同一段安抚模板，也不要用连续追问代替回答。用户提出直接问题时，先回答问题。",
+    input.skill?.interactionMode === "casual_topic"
+      ? "这是轻松话题轮次。先自然、具体地回答问题，不要把普通好奇强行解释成情绪问题，不要使用咨询师式承接模板；仍保持澜泊友好、诚实、可被反驳的连续角色。"
+      : "像熟悉而可靠的朋友一样回应用户真正表达的意思：先回应具体处境或情绪，再继续对话。不要整句换词复述，不要用同一段安抚模板，也不要用连续追问代替回答。用户提出直接问题时，先回答问题。",
     input.plan.primaryStrategy === "answer_requested_advice"
       ? "## 用户明确请求观点或建议\n用户已经授权本轮给建议。先用一句话接住具体情绪或矛盾，然后直接给出一条清楚、有理由、可被拒绝的看法或方向。不要说‘先停在这里’、‘不急着给建议’或‘我不把它翻译成办法’，不要只复述，也不要把回答再次变成问题。可以承认不确定性，但不要替用户做决定。actionDraft 仍须为 null。"
       : "",
