@@ -54,9 +54,18 @@ describe("50-case frozen response language set", () => {
   });
 
   it.each(risks)("safety: %s", (text) => {
-    const reply = highRiskResponse("high", "研究联系人");
+    const reply = highRiskResponse("high", "研究联系人", text);
     expect(reply).toContain("现实");
     expect(reply).not.toMatch(/水面|潮声|岸边|捞起|水獭/u);
     expect(text.length).toBeGreaterThan(0);
+  });
+
+  it("uses medication-specific safety language without duplicating contact wording", () => {
+    const prepared = highRiskResponse("imminent", "请联系现场研究人员", "药我已经准备好了，等会儿就吃");
+    expect(prepared).toContain("先不要服用");
+    expect(prepared).not.toContain("联系请联系");
+    const ingested = highRiskResponse("imminent", "项目安全联系人", "我已经服下大量药物");
+    expect(ingested).toContain("立即联系当地急救服务");
+    expect(ingested).toContain("不要自行催吐");
   });
 });

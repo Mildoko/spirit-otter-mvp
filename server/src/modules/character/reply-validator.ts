@@ -1,5 +1,5 @@
 import type { EmotionHypothesisV1, EmotionLabelV1, ResponsePlan, ResponseStyleResolution } from "@otter/shared";
-import { adviceMarkers, aphorismMarkers, bannedReplyPhrases, dependencyPhrases, detectDeliveredAccents, diagnosisPhrases, everydayMetaphorMarkers, mentorPhrases, waterMetaphorMarkers } from "./language-registry.js";
+import { adviceMarkers, aphorismMarkers, bannedReplyPhrases, containsDependencyLanguage, detectDeliveredAccents, diagnosisPhrases, everydayMetaphorMarkers, mentorPhrases, waterMetaphorMarkers } from "./language-registry.js";
 import { validateSkillReply } from "../skills/harness.js";
 import type { SkillResolution } from "../skills/types.js";
 
@@ -30,6 +30,12 @@ function meaningfulAnchors(userText: string): string[] {
 
 function firstClause(text: string): string {
   return text.trim().split(/[，。！？!?]/u)[0]?.trim() ?? "";
+}
+
+function containsConcreteAction(text: string): boolean {
+  const actionable = text.replace(/(?:也)?可以先不(?:整理|行动|做)|不需要.{0,8}(?:整理|行动|做)/gu, "");
+  return /(?:先|现在|今天只|我们只|只要|可以先|试着|不妨先|那一步(?:就)?)(?:.{0,8})?(?:打开|写下|回复|创建|整理|挑出|选一|改完|发给|列出|收拾|放回)/u.test(actionable)
+    || /(?:打开|写下|回复|创建).{0,18}(?:文档|邮件|消息|标题|草稿|文件|简历)/u.test(actionable);
 }
 
 const emotionTerms: Record<EmotionLabelV1, string[]> = {
@@ -70,7 +76,9 @@ export function validateGeneratedReply(input: {
   const supportedLabels = new Set(emotionHypothesis?.labels.map((item) => item.label) ?? []);
 
   if (bannedReplyPhrases.some((phrase) => reply.includes(phrase))) add("BANNED_PHRASE", "hard");
-  if (dependencyPhrases.some((phrase) => reply.includes(phrase))) add("DEPENDENCY_LANGUAGE", "hard");
+  if (containsDependencyLanguage(reply)) add("DEPENDENCY_LANGUAGE", "hard");
+  if (/(?:先)?让(?:这句话|它).{0,5}(?:落在这里|落下来|停在这里)|没来得及落下/u.test(reply)) add("STILTED_HOLDING_PHRASE", "hard");
+  if (/(?:这件事|这句话).{0,8}(?:带着分量|很有分量)|(?:先)?给.{0,8}(?:停留空间|一个形状)|不是想象中那么重/u.test(reply)) add("MECHANICAL_THERAPY_PHRASE", "hard");
   if (diagnosisPhrases.some((phrase) => reply.includes(phrase))) add("DIAGNOSIS_LANGUAGE", "hard");
   if (/(?:你就是|说明你|这证明你).{0,12}(?:一种人|性格|人格|有病|心理问题)/u.test(reply)) add("DIAGNOSTIC_EMOTION_CLAIM", "hard");
   if (emotionHypothesis?.status === "unknown" && assertedLabels.length > 0) add("UNSUPPORTED_EMOTION_ASSERTION", "hard");
@@ -81,7 +89,13 @@ export function validateGeneratedReply(input: {
   if (emotionHypothesis && assertedLabels.length > 0 && (emotionHypothesis.confidence < 0.55 || emotionHypothesis.labels.some((item) => item.evidenceSpans.length === 0))) add("EMOTION_LABEL_WITHOUT_EVIDENCE", "hard");
   if (questionCount > style.profile.questionBudget) add("QUESTION_BUDGET_EXCEEDED", "hard");
   if (!plan.allowActionDraft && actionDraft !== null) add("UNAUTHORIZED_ACTION", "hard");
+  if (plan.allowActionDraft && plan.primaryStrategy === "one_small_action" && actionDraft === null) add("AUTHORIZED_ACTION_MISSING", "hard");
+  if (!plan.allowActionDraft
+    && plan.sceneState !== "safety_plain"
+    && plan.primaryStrategy !== "answer_requested_advice"
+    && containsConcreteAction(reply)) add("UNAUTHORIZED_ACTION_IN_REPLY", "hard");
   if (actionDraft && actionDraft.length > 60) add("ACTION_TOO_LONG", "hard");
+  if (actionDraft && /(?:然后|接着|同时|并且|；|;|\n\s*[-*\d])/u.test(actionDraft)) add("ACTION_BUNDLE", "hard");
   if (plan.activeSpirit === "deep_tide" && plan.primaryStrategy !== "answer_requested_advice" && adviceMarkers.some((marker) => reply.includes(marker))) add("DEEP_TIDE_DIRECT_ADVICE", "hard");
   if (plan.primaryStrategy === "answer_requested_advice") {
     const answersWithAdvice = /(?:我的建议|我会建议|我更倾向|我觉得|我的看法|不妨|可以试试|可以先|先把|更值得)/u.test(reply);
@@ -91,13 +105,21 @@ export function validateGeneratedReply(input: {
   }
   if (["invite_one_small_action", "clarify_then_invite"].includes(plan.primaryStrategy)) {
     const hasActionLeak = /(?:打开|写下|回复).{0,18}(?:邮件|文档|一句|开头)/u.test(reply) || /(?:先做|第一步).{0,12}(?:是|：|:|可以)/u.test(reply) || /(?:动作|一步).{0,12}(?:是|可以是|试试)/u.test(reply);
-    const hasLowPressureInvite = /(?:如果你愿意|要不要|愿不愿意|是否愿意|可以由你决定|也可以先不)/u.test(reply);
+    const hasLowPressureInvite = /(?:如果(?:你)?愿意|愿意的话|要不要|愿不愿意|是否愿意|可以由你决定|也可以先不|不整理也可以)/u.test(reply);
     if (hasActionLeak) add("ACTION_BEFORE_ACCEPTANCE", "hard");
     if (!hasLowPressureInvite) add("TRANSITION_INVITE_MISSING", "hard");
   }
   if (!["invite_one_small_action", "clarify_then_invite"].includes(plan.primaryStrategy) && /(?:如果你愿意|要不要|愿不愿意).{0,18}(?:整理|行动|往前|试试)/u.test(reply)) add("UNAUTHORIZED_TRANSITION_INVITE", "hard");
   if (plan.routeReasonCodes.includes("ELEVATED_RISK") && !/(?:现在|此刻).{0,6}(?:安全|有人陪)|身边.{0,10}(?:联系|可信任|陪)|是否.{0,4}安全/u.test(reply)) {
     add("ELEVATED_SAFETY_CHECK_MISSING", "hard");
+  }
+  if (plan.primaryStrategy === "dependency_boundary") {
+    if (!/(?:不能|不会|不可以).{0,14}(?:唯一|切断|不再联系|离开现实|排他)|现实里.{0,12}(?:朋友|家人|人)/u.test(reply)) add("DEPENDENCY_ISOLATION_NOT_REFUSED", "hard");
+    if (!/(?:现实|身边).{0,12}(?:朋友|家人|联系|陪|人)/u.test(reply)) add("REAL_WORLD_SUPPORT_MISSING", "hard");
+  }
+  if (plan.primaryStrategy === "capability_boundary") {
+    if (!/(?:我不是真人|我是.{0,8}AI|由 AI 驱动|人工智能)/iu.test(reply)) add("CAPABILITY_DISCLOSURE_MISSING", "hard");
+    if (!/(?:不能|无法|不会).{0,8}(?:诊断|确诊)|不能替代.{0,8}(?:医生|心理医生|专业)/u.test(reply)) add("DIAGNOSIS_BOUNDARY_MISSING", "hard");
   }
   if (deliveredAccents.length > 1) add("MULTIPLE_EXPRESSIVE_ACCENTS", "hard");
   if (style.profile.expressiveAccent === "none" && deliveredAccents.length > 0) add("EXPRESSIVE_ACCENT_FORBIDDEN", "hard");
@@ -120,7 +142,9 @@ export function validateGeneratedReply(input: {
   if (/(嗯嗯|其实吧|怎么说呢).*(?:嗯嗯|其实吧|怎么说呢)/u.test(reply)) add("REPEATED_FILLER", "soft");
   if (["clarify_low_signal", "clarify_then_invite"].includes(plan.primaryStrategy) && !/(?:一个词|一小段|今天|刚才|更像|选一个|说不清|不用完整)/u.test(reply)) add("LOW_SIGNAL_SCAFFOLD_MISSING", "soft");
   if (input.skill) {
-    for (const code of validateSkillReply({ reply, actionDraft, resolution: input.skill, optedOut: input.skill.reasonCodes.includes("ASTROLOGY_USER_OPTOUT") })) add(code, "hard");
+    for (const code of validateSkillReply({ reply, actionDraft, resolution: input.skill, optedOut: input.skill.reasonCodes.includes("ASTROLOGY_USER_OPTOUT"), userText: input.userText })) add(code, "hard");
+    const boundaryPhrase = /(?:观察角度|不必.{0,5}定型|不要.{0,5}定型|不给.{0,5}定型)/u;
+    if (boundaryPhrase.test(reply) && recentReplies.some((recent) => boundaryPhrase.test(recent))) add("ASTROLOGY_DISCLAIMER_OVERUSE", "soft");
   }
 
   return {

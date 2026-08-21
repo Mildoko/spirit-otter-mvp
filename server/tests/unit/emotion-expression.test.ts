@@ -14,7 +14,7 @@ const state = (control = 0.4): EmotionState => ({
 
 describe("emotion expression brief", () => {
   it.each([
-    ["sadness", "停留空间"], ["anger", "不催用户冷静"], ["anxiety", "降低句子复杂度"],
+    ["sadness", "具体的失去或难过"], ["anger", "不催用户冷静"], ["anxiety", "降低句子复杂度"],
     ["frustration", "努力受阻"], ["shame", "整体自我"], ["guilt", "具体行为"], ["relief", "不立刻塞入下一项任务"],
   ] as const)("maps %s to a bounded response instruction", (label, expected) => {
     expect(resolveEmotionExpressionBrief(hypothesis(label), state()).instructions.join(" ")).toContain(expected);

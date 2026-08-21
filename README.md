@@ -22,7 +22,7 @@
 1. 复制 `.env.example` 为 `.env`，设置随机 `SESSION_SECRET` 和数据库连接。正式试验必须填写 `LLM_API_KEY`；开发环境留空时只会使用克制的本地降级回复。
 2. 启动 Postgres。安装了 Docker 的环境可运行 `docker compose up -d db`。
 3. 运行 `npm install`、`npm run db:generate`、`npm run db:migrate`。
-4. 运行 `npm run invites -- 5` 生成测试邀请码。
+4. 运行 `npm run invites -- 5` 生成有效期 7 天的测试邀请码。
 5. 开发模式运行 `npm run dev`；正式局域网入口按 `infra/Caddyfile` 配置为 `https://otter.local`。
 
 ### 两种明确入口

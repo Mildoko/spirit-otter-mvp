@@ -1,8 +1,8 @@
 # 灵体水獭 Topic Skill / Astrology Skill v1
 
-版本：`astrology-skill-v1`
+版本：`astrology-skill-v1.1`（体验修复版；文档主版本仍为 v1）
 
-知识版本：`astrology-knowledge-v1`
+知识版本：`astrology-knowledge-v1.1`
 
 Harness：`skill-harness-v1`
 状态：实现完成，默认关闭；真实模型与人工体验评审完成前不得宣称可发布。

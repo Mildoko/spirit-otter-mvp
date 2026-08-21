@@ -82,5 +82,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   if (result.data.NODE_ENV === "production" && result.data.OTTER_RUNTIME_MODE !== "full") {
     throw new Error("生产模式只允许 full 运行模式");
   }
+  if (result.data.NODE_ENV === "production" && /^(?:请联系)?现场研究人员$/u.test(result.data.RESEARCH_CONTACT.trim())) {
+    throw new Error("生产模式必须配置可执行的 RESEARCH_CONTACT，不能使用占位联系人");
+  }
   return result.data;
 }

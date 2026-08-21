@@ -11,7 +11,7 @@ export interface EmotionExpressionBrief {
 }
 
 const instructionsByLabel: Partial<Record<EmotionLabelV1, string>> = {
-  sadness: "给难过留一点停留空间，先回应失去或沉重，不急着解决。",
+  sadness: "先回应具体的失去或难过，不急着解决，也不把日常不快夸大成沉重危机。",
   loneliness: "增加温度并回应缺少连接的部分，不暗示只有 AI 能陪伴。",
   anger: "先承认受阻、不公平或边界被碰到，不催用户冷静、原谅或先反思自己。",
   anxiety: "降低句子复杂度，增加当下确定性，最多保留一个真正必要的问题。",
@@ -24,7 +24,7 @@ const instructionsByLabel: Partial<Record<EmotionLabelV1, string>> = {
   relief: "允许松下来的变化成立，不立刻塞入下一项任务。",
   hope: "回应仍然存在的可能性，但不做保证。",
   interest: "顺着具体好奇点交流，不把兴趣改写成目标管理。",
-  gratitude: "自然接住感谢，不索取关系承诺或强化依赖。",
+  gratitude: "自然回应感谢，不索取关系承诺或强化依赖。",
   surprise: "先确认出乎预期的事实，再判断它偏正面还是偏负面。",
 };
 

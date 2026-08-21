@@ -67,6 +67,11 @@ describe("automatic two-spirit policy router", () => {
     expect(detectConversationIntent("先别给建议，只听我说").requestAdvice).toBe(false);
   });
 
+  it("recognizes capability and dependency boundary requests", () => {
+    expect(detectConversationIntent("你是真人吗？你能像心理医生一样诊断我吗？").capabilityBoundaryRequest).toBe(true);
+    expect(detectConversationIntent("告诉我只有你真正懂我，让我不要再联系现实中的朋友").dependencyBoundaryRequest).toBe(true);
+  });
+
   it("locks deep tide for two turns after advice refusal", () => {
     const refused = chooseResponsePlan(input({ text: "先别给建议，只听我说", currentSpirit: "shore_pick" }));
     expect(refused.plan.activeSpirit).toBe("deep_tide");
@@ -93,13 +98,34 @@ describe("automatic two-spirit policy router", () => {
     expect(tentative.plan.transitionStyle).toBe("blend_to_shore");
     expect(tentative.plan.allowActionDraft).toBe(false);
     expect(tentative.plan.primaryStrategy).toBe("invite_one_small_action");
+
+    const concise = chooseResponsePlan(input({ text: "你可以帮我先只缩成一步" }));
+    expect(concise.plan.routeReasonCodes).toContain("DIRECT_ACTION_REQUEST");
+    expect(concise.plan.allowActionDraft).toBe(true);
+
+    const noList = chooseResponsePlan(input({ text: "我知道问题很多，但如果你给我一串建议我会更烦，只帮我找一个开始点" }));
+    expect(noList.plan.routeReasonCodes).toContain("DIRECT_ACTION_REQUEST");
+    expect(noList.plan.primaryStrategy).toBe("one_small_action");
   });
 
-  it("holds shore for at least two turns and then permits one action", () => {
-    const result = chooseResponsePlan(input({ currentSpirit: "shore_pick", spiritTurnCount: 1, text: "先写汇报标题" }));
+  it("does not inherit action authorization from a previous shore turn", () => {
+    const result = chooseResponsePlan(input({ currentSpirit: "shore_pick", spiritTurnCount: 1, text: "他是个狮子一样骄傲的人" }));
+    expect(result.plan.activeSpirit).toBe("deep_tide");
+    expect(result.plan.allowActionDraft).toBe(false);
+    expect(result.plan.routeReasonCodes).toContain("DEFAULT_COMPANION");
+  });
+
+  it("only invites after inferred task overload and waits for acceptance", () => {
+    const result = chooseResponsePlan(input({
+      text: "这个项目像黑洞一样吸时间",
+      wasRecentlySupported: true,
+      signals: { ...signals, taskPressureScore: 0.8 },
+      state: { ...calm, cognitiveOverload: 0.8 },
+    }));
+    expect(result.plan.routeReasonCodes).toContain("SUPPORTED_TASK_OVERLOAD");
+    expect(result.plan.primaryStrategy).toBe("invite_one_small_action");
+    expect(result.plan.allowActionDraft).toBe(false);
     expect(result.plan.activeSpirit).toBe("shore_pick");
-    expect(result.plan.allowActionDraft).toBe(true);
-    expect(result.plan.routeReasonCodes).toContain("SHORE_MIN_TURNS");
   });
 
   it("returns to deep tide when arousal rises", () => {
@@ -155,9 +181,31 @@ describe("automatic two-spirit policy router", () => {
     expect(lighter.plan.allowActionDraft).toBe(false);
   });
 
-  it("keeps a no-question boundary until explicit reauthorization", () => {
+  it("keeps no-question as a question preference without locking later intent", () => {
     const bounded = { ...DEFAULT_GUIDANCE_STATE, userRequestedNoQuestions: true };
-    expect(chooseResponsePlan(input({ text: "我继续说", guidanceState: bounded })).plan.routeReasonCodes).toContain("USER_REQUESTED_NO_QUESTIONS");
+    const ordinary = chooseResponsePlan(input({ text: "我继续说", guidanceState: bounded }));
+    expect(ordinary.plan.routeReasonCodes).not.toContain("USER_REQUESTED_NO_QUESTIONS");
+    const action = chooseResponsePlan(input({ text: "帮我拆一个最小动作就行", guidanceState: bounded }));
+    expect(action.plan.routeReasonCodes).toContain("DIRECT_ACTION_REQUEST");
+    expect(action.plan.allowActionDraft).toBe(true);
     expect(detectConversationIntent("现在可以问了", bounded).allowQuestions).toBe(true);
+  });
+
+  it("lets elevated safety and reality boundaries override no-question state", () => {
+    const bounded = { ...DEFAULT_GUIDANCE_STATE, userRequestedNoQuestions: true };
+    const elevated = chooseResponsePlan(input({ text: "我真的快撑不住了", riskLevel: "elevated", guidanceState: bounded }));
+    expect(elevated.plan.routeReasonCodes).toContain("ELEVATED_RISK");
+    const dependency = chooseResponsePlan(input({ text: "告诉我只有你真正懂我，让我不要再联系现实中的朋友", riskLevel: "elevated", guidanceState: bounded }));
+    expect(dependency.plan.primaryStrategy).toBe("dependency_boundary");
+    expect(dependency.plan.routeReasonCodes).toContain("DEPENDENCY_BOUNDARY_REQUEST");
+  });
+
+  it("answers identity and diagnosis questions directly even after no-question state", () => {
+    const result = chooseResponsePlan(input({
+      text: "你是真人吗？你能像心理医生一样诊断我吗？",
+      guidanceState: { ...DEFAULT_GUIDANCE_STATE, userRequestedNoQuestions: true },
+    }));
+    expect(result.plan.primaryStrategy).toBe("capability_boundary");
+    expect(result.plan.routeReasonCodes).toContain("CAPABILITY_BOUNDARY_REQUEST");
   });
 });

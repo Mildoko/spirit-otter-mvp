@@ -1,5 +1,6 @@
 import type { TopicSkillGuidanceStateV1 } from "@otter/shared";
 import { astrologySkill, ASTROLOGY_SKILL_VERSION } from "./astrology/skill.js";
+import { classifyMonthDay, mentionedSigns } from "./astrology/knowledge.js";
 import { SKILL_HARNESS_VERSION, type SkillDiagnostics, type SkillResolution } from "./types.js";
 
 const deterministicMarker = /(?:一定|注定|必然|绝对|百分之百|命中注定|天生就是)/gu;
@@ -9,7 +10,7 @@ const unsupportedPlacement = /(?:你的|你是).{0,8}(?:上升|月亮|第.{0,3}�
 const fatalism = /(?:灾难|血光之灾|厄运|逃不掉|劫数|会死|克死|不祥)/u;
 const disagreementOverride = /(?:你不懂自己|你只是没意识到|星座不会错|迟早会发现我说得对)/u;
 
-export function validateSkillReply(input: { reply: string; actionDraft: string | null; resolution: SkillResolution; optedOut: boolean }): string[] {
+export function validateSkillReply(input: { reply: string; actionDraft: string | null; resolution: SkillResolution; optedOut: boolean; userText?: string }): string[] {
   if (input.resolution.status !== "active") return [];
   const violations: string[] = [];
   const deterministicClaim = [...input.reply.matchAll(deterministicMarker)].some((match) => {
@@ -27,6 +28,11 @@ export function validateSkillReply(input: { reply: string; actionDraft: string |
   if (disagreementOverride.test(input.reply)) violations.push("ASTROLOGY_USER_DISAGREEMENT_OVERRIDDEN");
   if (input.optedOut) violations.push("ASTROLOGY_SKILL_AFTER_OPTOUT");
   if (input.actionDraft !== null) violations.push("SKILL_OVERRIDES_CORE_POLICY");
+  const date = classifyMonthDay(input.userText ?? "");
+  if (date.kind === "invalid") {
+    const rejectsInvalidDate = /(?:不存在|没有|不是|无效|不合法).{0,14}(?:日期|公历|月|日|星座)|(?:日期|公历|月|日).{0,14}(?:不存在|没有|无效|不合法)/u.test(input.reply);
+    if (!rejectsInvalidDate || mentionedSigns(input.reply).length > 0) violations.push("ASTROLOGY_INVALID_DATE_FABRICATION");
+  }
   return [...new Set(violations)];
 }
 

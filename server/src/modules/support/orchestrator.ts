@@ -127,7 +127,7 @@ export class SupportOrchestrator {
     const nextTopicState = nextTopicSkillState(guidanceState.topicSkill, skillResolution, guidanceState.turnIndex + 1);
 
     if (riskLevel === "high" || riskLevel === "imminent") {
-      const finalReply = highRiskResponse(riskLevel, this.env.RESEARCH_CONTACT);
+      const finalReply = highRiskResponse(riskLevel, this.env.RESEARCH_CONTACT, input.text);
       return {
         signals,
         rawState,

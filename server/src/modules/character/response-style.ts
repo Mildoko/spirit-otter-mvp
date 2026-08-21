@@ -2,7 +2,7 @@ import type { EmotionState, ExpressiveAccent, GuidanceState, InteractionMode, Re
 import { z } from "zod";
 import { DEFAULT_GUIDANCE_STATE } from "../support/guidance-state.js";
 
-export const RESPONSE_STYLE_VERSION = "2026-08-20.1";
+export const RESPONSE_STYLE_VERSION = "2026-08-21.1";
 
 export const responseStyleProfileSchema = z.object({
   pace: z.enum(["very_slow", "slow", "steady", "direct"]), sentenceLength: z.enum(["short", "medium"]),
@@ -47,7 +47,7 @@ function outlineFor(plan: ResponsePlan, profile: ResponseStyleProfile, interacti
   if (plan.transitionStyle === "blend_to_shore") return ["先具体接话", "只指出一个阻塞点", "发出一次可拒绝的邀请；本轮不创建行动"];
   if (plan.transitionStyle === "blend_to_deep") return ["停止推进和整理", "具体承接用户刚才的不适或拒绝", "不创建行动"];
   if (plan.activeSpirit === "shore_pick") return ["延续情绪语境", "只指出一个阻塞点", profile.adviceDirectness === "none" ? "不提出行动" : "最多提出一个可拒绝的微小行动"];
-  return ["像成年朋友一样接住一个具体事实或冲突", "用暂时假设映照负担", profile.questionBudget ? "可选一个真正需要回答的问题" : "不提问"];
+  return ["像成年朋友一样回应一个具体事实或冲突", "用暂时假设映照负担", profile.questionBudget ? "可选一个真正需要回答的问题" : "不提问"];
 }
 
 const turnsSince = (current: number, previous: number | null) => previous === null ? Number.POSITIVE_INFINITY : current - previous;
@@ -78,7 +78,6 @@ export function resolveResponseStyle(input: { plan: ResponsePlan; state: Emotion
     Object.assign(profile, { pace: "direct", sentenceLength: "medium", responseLength: "normal", warmth: "warm", reflectionDepth: "fact", questionBudget: 1, adviceDirectness: "none", uncertainty: "medium", conversationality: "natural", sentenceRhythm: "mixed", expressiveAccent: "none" });
     reasonCodes.push("CASUAL_TOPIC_DIRECT_ANSWER");
   }
-  const explicitQuestionBoundary = guidanceState.userRequestedNoQuestions || /(?:不要|别|不用|不想|先别).{0,6}(?:问|问题)/u.test(input.userText);
   if (!plan.allowActionDraft || plan.forbiddenContent.some((item) => /建议|步骤|行动|任务/u.test(item))) profile.adviceDirectness = "none";
   if (guidanceState.userRequestedNoQuestions || plan.forbiddenContent.some((item) => item === "提问")) profile.questionBudget = 0;
   if (/(?:不要|别|不用|不想|先别).{0,6}(?:问|问题)/u.test(input.userText)) { profile.questionBudget = 0; reasonCodes.push("USER_BOUNDARY_NO_QUESTION"); }
@@ -98,7 +97,7 @@ export function resolveResponseStyle(input: { plan: ResponsePlan; state: Emotion
   if (state.stressLoad >= 0.7 || state.valence <= -0.65) { profile.reflectionDepth = profile.reflectionDepth === "meaning" ? "tension" : profile.reflectionDepth; reasonCodes.push("DISTRESS_NO_REFRAME"); }
   if (state.confidence < 0.55) { profile.uncertainty = "high"; profile.reflectionDepth = "fact"; reasonCodes.push("LOW_CONFIDENCE_HYPOTHESIS"); }
   if (avoidPhrases.includes("连续提问")) profile.questionBudget = 0;
-  if (plan.routeReasonCodes.includes("ELEVATED_RISK") && !explicitQuestionBoundary) {
+  if (plan.routeReasonCodes.includes("ELEVATED_RISK")) {
     profile.questionBudget = 1;
     reasonCodes.push("ELEVATED_SAFETY_CHECK_REQUIRED");
   }

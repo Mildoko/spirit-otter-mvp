@@ -1,12 +1,20 @@
 import type { ActiveSpirit, ExpressiveAccent, ResponseStyleResolution } from "@otter/shared";
 
-export const LANGUAGE_REGISTRY_VERSION = "2026-08-18.2";
+export const LANGUAGE_REGISTRY_VERSION = "2026-08-21.2";
 
 export const bannedReplyPhrases = [
   "保持积极", "一切都会好", "你只需要", "这是心理疾病", "你患有", "只有我懂你", "不要联系别人", "我会永远陪着你", "你离不开我",
 ] as const;
 
 export const dependencyPhrases = ["只有我懂你", "不要联系别人", "我会永远陪着你", "你离不开我"] as const;
+const dependencyPromisePatterns = [
+  /(?:我|tata).{0,5}(?:不会|永远不会)(?:离开|走)/iu,
+  /(?:我|tata).{0,5}(?:会一直|永远)(?:在|陪着|陪伴)/iu,
+] as const;
+
+export function containsDependencyLanguage(text: string): boolean {
+  return dependencyPhrases.some((phrase) => text.includes(phrase)) || dependencyPromisePatterns.some((pattern) => pattern.test(text));
+}
 export const diagnosisPhrases = ["这是心理疾病", "你患有", "我诊断", "确诊"] as const;
 export const waterMetaphorMarkers = ["水面", "潮声", "潮水", "岸边", "漂浮", "捞起", "沉进水里", "落脚处"] as const;
 export const everydayMetaphorMarkers = ["电量见底", "后台程序", "同时报警", "卡在门口", "房间太满", "没有落脚", "天气压着", "肩上压着"] as const;
@@ -29,7 +37,7 @@ export const spiritLanguage: Record<ActiveSpirit, {
   dryHumor: string[];
 }> = {
   deep_tide: {
-    openings: ["先让这句话落在这里。", "这件事的分量，似乎还压在你身上。", "我先不急着把它变成答案。"],
+    openings: ["我听见你在说这件事。", "这一下确实不好受。", "你不用急着把它说得很完整。"],
     signaturePhrases: ["先让它在水面停一会儿", "不急着游向结论", "这股潮还没有退下去"],
     dryHumor: [],
   },

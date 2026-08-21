@@ -4,7 +4,7 @@ import { loadEnv } from "../../src/config/env.js";
 import { composeCharacterPrompt } from "../../src/modules/character/prompt-composer.js";
 import { resolveResponseStyle } from "../../src/modules/character/response-style.js";
 import { guardMemoryCandidate } from "../../src/modules/memory/guard.js";
-import { conventionalSunSign, parseMonthDay } from "../../src/modules/skills/astrology/knowledge.js";
+import { classifyMonthDay, conventionalSunSign, parseMonthDay } from "../../src/modules/skills/astrology/knowledge.js";
 import { validateSkillReply } from "../../src/modules/skills/harness.js";
 import { resolveTopicSkill } from "../../src/modules/skills/registry.js";
 import { DEFAULT_GUIDANCE_STATE } from "../../src/modules/support/guidance-state.js";
@@ -27,6 +27,7 @@ describe("Astrology Skill v1", () => {
     expect(conventionalSunSign(9, 5).name).toBe("处女座");
     expect(parseMonthDay("8月23日是什么星座")?.boundary).toBe(true);
     expect(parseMonthDay("13月40日是什么星座")).toBeNull();
+    expect(classifyMonthDay("13月40日是什么星座")).toEqual({ kind: "invalid", month: 13, day: 40 });
   });
 
   it("activates explicit topic requests but not incidental emotional context", () => {
@@ -57,6 +58,22 @@ describe("Astrology Skill v1", () => {
       .toEqual(expect.arrayContaining(["ASTROLOGY_DETERMINISTIC_CLAIM", "ASTROLOGY_SCIENCE_MISREPRESENTATION", "SKILL_OVERRIDES_CORE_POLICY"]));
     expect(validateSkillReply({ reply: "星座不一定符合每个人，你的实际体验更重要。", actionDraft: null, resolution: skill, optedOut: false })).toEqual([]);
     expect(validateSkillReply({ reply: "没有哪个星座一定会背叛人，水逆也不会注定你失败。", actionDraft: null, resolution: skill, optedOut: false })).toEqual([]);
+  });
+
+  it("rejects invented zodiac answers for invalid calendar dates", () => {
+    const skill = resolve("13月40日是什么星座？");
+    expect(validateSkillReply({ reply: "13月可以算作双鱼座的延伸。", actionDraft: null, resolution: skill, optedOut: false, userText: "13月40日是什么星座？" }))
+      .toContain("ASTROLOGY_INVALID_DATE_FABRICATION");
+    expect(validateSkillReply({ reply: "公历里没有有效的13月40日，所以这个日期没有对应的星座。", actionDraft: null, resolution: skill, optedOut: false, userText: "13月40日是什么星座？" }))
+      .toEqual([]);
+  });
+
+  it("answers invalid dates deterministically in local fallback", async () => {
+    const env = loadEnv({ DATABASE_URL: "postgresql://unused/unused", SESSION_SECRET: "a-secret-with-at-least-thirty-two-characters", NODE_ENV: "test", LLM_API_KEY: "", ASTROLOGY_SKILL_V1: "true" });
+    const orchestrator = new SupportOrchestrator(new LlmGateway(env), env);
+    const result = await orchestrator.run({ text: "13月40日是什么星座？", currentSpirit: "deep_tide", spiritTurnCount: 0, companionLockTurns: 0, recentContext: [], previousRawStates: [], memories: [], guidanceState: DEFAULT_GUIDANCE_STATE });
+    expect(result.reply).toBe("公历里没有有效的13月40日，所以这个日期没有对应的星座。");
+    expect(result.actionDraft).toBeNull();
   });
 
   it("prevents birth and sign facts from entering long-term memory", () => {

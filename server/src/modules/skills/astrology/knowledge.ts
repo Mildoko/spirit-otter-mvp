@@ -1,4 +1,4 @@
-export const ASTROLOGY_KNOWLEDGE_VERSION = "astrology-knowledge-v1";
+export const ASTROLOGY_KNOWLEDGE_VERSION = "astrology-knowledge-v1.1";
 
 export interface ZodiacSignKnowledge {
   id: string;
@@ -30,14 +30,25 @@ export function mentionedSigns(text: string): ZodiacSignKnowledge[] {
   return zodiacSigns.filter((sign) => text.includes(sign.name) || text.includes(sign.name.replace("座", "")));
 }
 
-export function parseMonthDay(text: string): { month: number; day: number; boundary: boolean } | null {
-  const match = text.match(/(?<!\d)(1[0-2]|0?[1-9])\s*(?:月|[-/.])\s*(3[01]|[12]\d|0?[1-9])\s*(?:日|号)?/u);
-  if (!match) return null;
+export type MonthDayInput =
+  | { kind: "absent" }
+  | { kind: "invalid"; month: number; day: number }
+  | { kind: "valid"; month: number; day: number; boundary: boolean };
+
+export function classifyMonthDay(text: string): MonthDayInput {
+  const match = text.match(/(?<!\d)(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})\s*(?:日|号)?/u);
+  if (!match) return { kind: "absent" };
   const month = Number(match[1]);
   const day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1) return { kind: "invalid", month, day };
   const daysInMonth = new Date(2024, month, 0).getDate();
-  if (day > daysInMonth) return null;
-  return { month, day, boundary: boundaryDates.has(`${month}-${day}`) };
+  if (day > daysInMonth) return { kind: "invalid", month, day };
+  return { kind: "valid", month, day, boundary: boundaryDates.has(`${month}-${day}`) };
+}
+
+export function parseMonthDay(text: string): { month: number; day: number; boundary: boolean } | null {
+  const parsed = classifyMonthDay(text);
+  return parsed.kind === "valid" ? parsed : null;
 }
 
 export function conventionalSunSign(month: number, day: number): ZodiacSignKnowledge {
@@ -53,8 +64,11 @@ export function conventionalSunSign(month: number, day: number): ZodiacSignKnowl
 
 export function knowledgeForPrompt(text: string): string {
   const signs = mentionedSigns(text);
-  const date = parseMonthDay(text);
-  if (date) {
+  const date = classifyMonthDay(text);
+  if (date.kind === "invalid") {
+    return `本地知识版本=${ASTROLOGY_KNOWLEDGE_VERSION}。用户输入的 ${date.month}月${date.day}日 不是有效公历日期，因此没有对应星座。必须直接指出日期无效，禁止把它归到任何星座或作为玩梗延伸。`;
+  }
+  if (date.kind === "valid") {
     const sign = conventionalSunSign(date.month, date.day);
     return `本地知识版本=${ASTROLOGY_KNOWLEDGE_VERSION}。常见日期范围把 ${date.month}月${date.day}日 归为${sign.name}（${sign.dateRange}）。${date.boundary ? "这是边界日期，年份、时区和具体出生时刻可能影响精确太阳位置，只能说常见范围。" : "不需要出生时间或地点。"}`;
   }

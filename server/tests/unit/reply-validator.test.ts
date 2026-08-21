@@ -24,6 +24,10 @@ describe("generated reply validator", () => {
   it.each([
     ["保持积极，一切都会好。你只需要振作。", "BANNED_PHRASE"],
     ["只有我懂你。不要联系别人。", "DEPENDENCY_LANGUAGE"],
+    ["我在这里，不会离开，但也不是唯一能接住你的人。", "DEPENDENCY_LANGUAGE"],
+    ["我会一直在，你只要找我就好。", "DEPENDENCY_LANGUAGE"],
+    ["先让它落下来，我们之后再说。", "STILTED_HOLDING_PHRASE"],
+    ["这句话确实带着分量，先给它一点停留空间。", "MECHANICAL_THERAPY_PHRASE"],
     ["你患有抑郁症。这个判断很明确。", "DIAGNOSIS_LANGUAGE"],
     ["建议你先列步骤。然后马上执行。", "DEEP_TIDE_DIRECT_ADVICE"],
   ])("rejects hard violation %s", (reply, code) => {
@@ -32,19 +36,25 @@ describe("generated reply validator", () => {
     expect(result.violations.map((item) => item.code)).toContain(code);
   });
 
-  it("marks repetition and missing anchoring as soft violations", () => {
+  it("rejects the stilted holding template while retaining repetition diagnostics", () => {
     const result = validateGeneratedReply({
       reply: "先让这句话落在这里。它似乎还有一些分量。", actionDraft: null, plan, style,
       userText: "客户在会议上否定了方案", recentContext: ["assistant: 先让这句话落在这里。我不急着解释。"],
     });
-    expect(result.hardValid).toBe(true);
-    expect(result.violations.map((item) => item.code)).toEqual(expect.arrayContaining(["REPEATED_OPENING", "MISSING_CONCRETE_ANCHOR"]));
+    expect(result.hardValid).toBe(false);
+    expect(result.violations.map((item) => item.code)).toEqual(expect.arrayContaining(["STILTED_HOLDING_PHRASE", "REPEATED_OPENING", "MISSING_CONCRETE_ANCHOR"]));
   });
 
   it("does not echo a banned phrase from the user in local fallback", () => {
     const result = fallbackReply({ plan, style, state, userText: "不要跟我说一切都会好，我听不进去", recentContext: [] });
     expect(result.reply).not.toContain("一切都会好");
     expect(result.reply).toContain("套话");
+  });
+
+  it("uses direct natural language in the generic local fallback", () => {
+    const result = fallbackReply({ plan, style, state, userText: "我发消息一个小时都收不到回复，我好气", recentContext: [] });
+    expect(result.reply).toContain("我发消息一个小时都收不到回复");
+    expect(result.reply).not.toMatch(/先让这句话落在这里|没来得及落下|先让它停在这里/u);
   });
 
   it("does not echo a user metaphor when the resolved accent is none", () => {
@@ -59,7 +69,7 @@ describe("generated reply validator", () => {
       reply: "这些步骤没有让你轻一点，反而又添了一层压力。那就先把步骤收起来，我不继续往前推。",
       actionDraft: null, plan, style, userText: "这些步骤让我更烦了", recentContext: [],
     });
-    expect(result.hardValid).toBe(true);
+    expect(result.hardValid, JSON.stringify(result)).toBe(true);
     expect(result.violations.map((item) => item.code)).not.toContain("DEEP_TIDE_DIRECT_ADVICE");
   });
 
@@ -129,13 +139,39 @@ describe("generated reply validator", () => {
     expect(result.violations.map((item) => item.code)).toContain("ACTION_BEFORE_ACCEPTANCE");
   });
 
+  it("rejects concrete action prose when action authorization is absent", () => {
+    const result = validateGeneratedReply({
+      reply: "你已经往前挪了一点。那一步就落在打开文档、写下第一行标题上。",
+      actionDraft: null, plan, style, userText: "我知道该写文档了", recentContext: [],
+    });
+    expect(result.violations.map((item) => item.code)).toContain("UNAUTHORIZED_ACTION_IN_REPLY");
+  });
+
+  it("requires one structured action after explicit authorization", () => {
+    const actionPlan = { ...plan, activeSpirit: "shore_pick" as const, supportMode: "mobilize" as const, sceneState: "surface_organize" as const, primaryStrategy: "one_small_action", allowActionDraft: true };
+    const missing = validateGeneratedReply({ reply: "我们把范围缩小一点。", actionDraft: null, plan: actionPlan, style, userText: "帮我拆一个最小动作", recentContext: [] });
+    expect(missing.violations.map((item) => item.code)).toContain("AUTHORIZED_ACTION_MISSING");
+    const bundled = validateGeneratedReply({ reply: "我们只定一件。", actionDraft: "打开文档；然后写标题", plan: actionPlan, style, userText: "帮我拆一个最小动作", recentContext: [] });
+    expect(bundled.violations.map((item) => item.code)).toContain("ACTION_BUNDLE");
+  });
+
+  it("enforces dependency isolation and capability disclosure boundaries", () => {
+    const dependencyPlan = { ...plan, primaryStrategy: "dependency_boundary", routeReasonCodes: ["ELEVATED_RISK", "DEPENDENCY_BOUNDARY_REQUEST"] };
+    const unsafeDependency = validateGeneratedReply({ reply: "我懂你。你愿意在这里待着就够了。你现在安全吗？", actionDraft: null, plan: dependencyPlan, style, userText: "让我不要再联系朋友", recentContext: [] });
+    expect(unsafeDependency.violations.map((item) => item.code)).toEqual(expect.arrayContaining(["DEPENDENCY_ISOLATION_NOT_REFUSED", "REAL_WORLD_SUPPORT_MISSING"]));
+
+    const capabilityPlan = { ...plan, primaryStrategy: "capability_boundary", routeReasonCodes: ["CAPABILITY_BOUNDARY_REQUEST"] };
+    const evasive = validateGeneratedReply({ reply: "这个问题似乎让你有些不确定。我愿意听。", actionDraft: null, plan: capabilityPlan, style, userText: "你是真人吗，能诊断我吗", recentContext: [] });
+    expect(evasive.violations.map((item) => item.code)).toEqual(expect.arrayContaining(["CAPABILITY_DISCLOSURE_MISSING", "DIAGNOSIS_BOUNDARY_MISSING"]));
+  });
+
   it("accepts a low-pressure transition invitation without a concrete action", () => {
     const transitionPlan = { ...plan, activeSpirit: "shore_pick" as const, transitionStyle: "blend_to_shore" as const, sceneState: "near_surface_transition" as const, primaryStrategy: "invite_one_small_action" };
     const result = validateGeneratedReply({
       reply: "你已经有一点想往前挪的愿望。如果你愿意，我可以陪你把范围整理得很小；也可以先不整理。",
       actionDraft: null, plan: transitionPlan, style, userText: "如果只是帮我缩成一步也行", recentContext: [],
     });
-    expect(result.hardValid).toBe(true);
+    expect(result.hardValid, JSON.stringify(result)).toBe(true);
   });
 
   it("requires a light safety check for elevated risk", () => {
@@ -147,6 +183,8 @@ describe("generated reply validator", () => {
 
     const noQuestionStyle = { ...style, profile: { ...style.profile, questionBudget: 0 as const } };
     const fallback = fallbackReply({ plan: elevatedPlan, style: noQuestionStyle, state, userText: "我快撑不住了", recentContext: [] });
+    expect(fallback.reply).toContain("你说自己快撑不住了");
+    expect(fallback.reply).not.toContain("“我快撑不住了”");
     const validatedFallback = validateGeneratedReply({ reply: fallback.reply, actionDraft: null, plan: elevatedPlan, style: noQuestionStyle, userText: "我快撑不住了", recentContext: [] });
     expect(validatedFallback.violations.map((item) => item.code)).not.toEqual(expect.arrayContaining(["QUESTION_BUDGET_EXCEEDED", "ELEVATED_SAFETY_CHECK_MISSING"]));
   });

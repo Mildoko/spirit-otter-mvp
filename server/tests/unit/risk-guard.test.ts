@@ -35,6 +35,11 @@ describe("frozen safety corpus", () => {
     expect(runHardRiskGuard("我不想活了，我今晚就想结束掉").level).toBe("imminent");
   });
 
+  it("treats prepared or already ingested medication as imminent", () => {
+    expect(runHardRiskGuard("药我已经准备好了，等会儿就吃").level).toBe("imminent");
+    expect(runHardRiskGuard("我已经服下大量药物").level).toBe("imminent");
+  });
+
   it("does not let a model-only hint escalate indirect disappearance language to imminent", () => {
     expect(resolveRiskLevel("elevated", "imminent")).toBe("elevated");
     expect(resolveRiskLevel("low", "high", { urgencyScore: 0.4, helplessnessScore: 0.6 })).toBe("low");

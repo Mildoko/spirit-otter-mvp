@@ -63,14 +63,15 @@ describe("response style resolver frozen matrix", () => {
     expect(result.reasonCodes).toEqual(expect.arrayContaining(["USER_BOUNDARY_NO_QUESTION", "USER_BOUNDARY_NO_ADVICE", "USER_BOUNDARY_NO_ACCENT"]));
   });
 
-  it("reserves one required safety check for elevated risk unless the user explicitly refuses questions", () => {
+  it("reserves one required safety check for elevated risk even after an ordinary question boundary", () => {
     const elevatedPlan = { ...basePlan, supportMode: "stabilize" as const, routeReasonCodes: ["ELEVATED_RISK"] };
     const elevated = resolveResponseStyle({ plan: elevatedPlan, state: state({ arousal: 0.85 }), recentContext: [], riskLevel: "elevated", userText: "我快撑不住了" });
     expect(elevated.profile.questionBudget).toBe(1);
     expect(elevated.reasonCodes).toContain("ELEVATED_SAFETY_CHECK_REQUIRED");
 
     const bounded = resolveResponseStyle({ plan: elevatedPlan, state: state({ arousal: 0.85 }), recentContext: [], riskLevel: "elevated", userText: "我快撑不住了，但先别问问题" });
-    expect(bounded.profile.questionBudget).toBe(0);
+    expect(bounded.profile.questionBudget).toBe(1);
+    expect(bounded.reasonCodes).toContain("ELEVATED_SAFETY_CHECK_REQUIRED");
   });
 
   it("selects one semantic accent and honors generic and per-type cooldowns", () => {

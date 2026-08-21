@@ -52,4 +52,9 @@ describe("runtime mode environment", () => {
   it("rejects non-full production modes", () => {
     expect(() => loadEnv({ ...base, NODE_ENV: "production", OTTER_RUNTIME_MODE: "demo", LLM_API_KEY: "configured" })).toThrow(/full/);
   });
+
+  it("rejects a placeholder safety contact in production", () => {
+    expect(() => loadEnv({ ...base, NODE_ENV: "production", OTTER_RUNTIME_MODE: "full", LLM_API_KEY: "configured" })).toThrow(/RESEARCH_CONTACT/);
+    expect(loadEnv({ ...base, NODE_ENV: "production", OTTER_RUNTIME_MODE: "full", LLM_API_KEY: "configured", RESEARCH_CONTACT: "拨打项目安全热线 400-000-0000" }).RESEARCH_CONTACT).toContain("安全热线");
+  });
 });

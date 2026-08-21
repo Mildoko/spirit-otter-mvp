@@ -12,6 +12,8 @@ export interface ConversationIntent {
   declinedTransition: boolean;
   requestNoQuestions: boolean;
   allowQuestions: boolean;
+  dependencyBoundaryRequest: boolean;
+  capabilityBoundaryRequest: boolean;
 }
 
 export interface PolicyInput {
@@ -33,7 +35,12 @@ export interface PolicyResult {
   nextCompanionLockTurns: number;
 }
 
-const refuseAdvicePatterns = [/(?:别|不要|不用|先别).{0,8}(?:建议|办法|步骤|教我|解决)/, /(?:只|先|想).{0,5}(?:听我说|陪我|让我说|说说|聊聊)/];
+const refuseAdvicePatterns = [
+  /(?:别|不要|不用|先别).{0,8}(?:建议|办法|步骤|教我|解决)/,
+  /(?:只|先|想).{0,5}(?:听我说|陪我|让我说|说说|聊聊)/,
+  /(?:一串|一堆|很多).{0,4}(?:建议|办法).{0,8}(?:更烦|不要|不想|听不进)/u,
+  /如果.{0,10}(?:建议|办法).{0,8}(?:更烦|听不进)/u,
+];
 const requestAdvicePatterns = [
   /(?:你|能不能|可以)?(?:给我|给点|有什么|有何).{0,8}(?:建议|意见|看法|方向|办法)/u,
   /(?:你觉得|你怎么看|换作是你|如果是你)/u,
@@ -48,14 +55,18 @@ const organizePatterns = [
   /直接给我.{0,10}(?:动作|一步|开始点)/,
   /(?:拆|缩成).{0,8}(?:一步|一个.{0,4}动作)/,
   /(?:再|更).{0,4}(?:轻|小|简单).{0,10}(?:一点|一些|愿意试|可以试)/,
+  /(?:给我|帮我|请).{0,6}(?:列|排).{0,8}(?:任务|事项|清单)/,
+  /^先(?:打开|写下?|确认|整理|创建|看|记下?|回复|发|给|填|把).{1,30}[。！!，,\s]*$/u,
 ];
 const stopPatterns = [/(?:算了|停一下|先不弄|不想整理|更烦了|别再列)/, /(?:不|不用|无需|别).{0,8}(?:帮我)?(?:整理|理一理|梳理)/];
 const directActionPatterns = [
   /(?:拆|缩成).{0,8}(?:一个)?(?:最小)?动作/,
+  /(?:拆|缩成).{0,8}(?:一步|一个.{0,4}动作)/,
   /(?:只给我|只帮我).{0,12}(?:一个|开始|动作|开始点)/,
   /(?:今天|现在).{0,8}(?:能开始|可以开始).{0,6}(?:动作|一步)?/,
   /(?:一个|最小).{0,6}(?:能开始|开始点|小动作|动作)/,
   /直接给我.{0,10}(?:动作|一步|开始点)/,
+  /^先(?:打开|写下?|确认|整理|创建|看|记下?|回复|发|给|填|把).{1,30}[。！!，,\s]*$/u,
 ];
 const tentativeOrganizePatterns = [
   /你要是.{0,16}(?:帮我|缩成|捞).{0,12}(?:也行|就好|可以)/,
@@ -72,6 +83,16 @@ const acceptancePatterns = [
 const declineTransitionPatterns = [/(?:先不|不要|不想|算了|不用).{0,8}(?:整理|往前|行动|切换|试)/u, /^(?:不了|不用了|算了)[。！!，,\s]*$/u];
 const noQuestionPatterns = [/(?:不要|别|不用|先别|不想).{0,6}(?:问|问题|追问)/u, /(?:只|先).{0,5}(?:听我说|陪着|让我说)/u];
 const allowQuestionPatterns = [/(?:可以|你可以|允许).{0,5}(?:问|提问)/u, /(?:你问吧|可以问了)/u];
+const dependencyBoundaryPatterns = [
+  /(?:告诉我|承认|说).{0,12}(?:只有你|只有(?:你|tata).{0,8}(?:懂|理解))/iu,
+  /(?:不要|别|不用|不再).{0,8}(?:联系|理会|相信).{0,8}(?:朋友|家人|现实中的人|其他人)/u,
+  /(?:只有你|只有tata).{0,8}(?:懂|理解).{0,8}(?:别离开|不要走)/iu,
+];
+const capabilityBoundaryPatterns = [
+  /(?:你是|你到底是|你是不是).{0,5}(?:真人|人类|机器人|AI)/iu,
+  /(?:能不能|可以|会不会|能).{0,8}(?:像)?(?:心理医生|治疗师|医生).{0,8}(?:诊断|治疗|判断)/u,
+  /(?:能不能|可以|会不会|能).{0,6}(?:诊断|确诊).{0,6}(?:我|心理|疾病|抑郁|焦虑)?/u,
+];
 
 export function detectConversationIntent(text: string, guidanceState: GuidanceState = DEFAULT_GUIDANCE_STATE): ConversationIntent {
   const refuseAdvice = refuseAdvicePatterns.some((pattern) => pattern.test(text));
@@ -79,15 +100,19 @@ export function detectConversationIntent(text: string, guidanceState: GuidanceSt
   const requestsLighterAction = /(?:如果|要是)?.{0,8}(?:再|更).{0,4}(?:轻|小|简单).{0,10}(?:愿意|可以|试)/u.test(text);
   const rejectsCurrentWeight = /(?:还是|有点|太).{0,5}(?:重|难)|接不住/u.test(text);
   const stopOrganizing = stopPatterns.some((pattern) => pattern.test(text)) || (rejectsCurrentWeight && !requestsLighterAction);
-  const requestOrganize = !refuseAdvice && !stopOrganizing && organizePatterns.some((pattern) => pattern.test(text));
+  const hasOrganizeCue = organizePatterns.some((pattern) => pattern.test(text));
+  const hasDirectActionCue = directActionPatterns.some((pattern) => pattern.test(text));
+  const requestOrganize = !stopOrganizing && hasOrganizeCue && (!refuseAdvice || hasDirectActionCue);
   const tentativeOrganize = requestOrganize && tentativeOrganizePatterns.some((pattern) => pattern.test(text));
-  const directActionRequest = requestOrganize && !tentativeOrganize && directActionPatterns.some((pattern) => pattern.test(text));
+  const directActionRequest = requestOrganize && !tentativeOrganize && hasDirectActionCue;
   const inviteIsCurrent = guidanceState.transitionInvitePending && guidanceState.lastTransitionInviteTurn === guidanceState.turnIndex;
   const acceptedTransition = inviteIsCurrent && acceptancePatterns.some((pattern) => pattern.test(text));
   const declinedTransition = inviteIsCurrent && declineTransitionPatterns.some((pattern) => pattern.test(text));
   const requestNoQuestions = noQuestionPatterns.some((pattern) => pattern.test(text));
   const allowQuestions = allowQuestionPatterns.some((pattern) => pattern.test(text));
-  return { refuseAdvice, requestAdvice, requestOrganize, directActionRequest, tentativeOrganize, stopOrganizing, acceptedTransition, declinedTransition, requestNoQuestions, allowQuestions };
+  const dependencyBoundaryRequest = dependencyBoundaryPatterns.some((pattern) => pattern.test(text));
+  const capabilityBoundaryRequest = capabilityBoundaryPatterns.some((pattern) => pattern.test(text));
+  return { refuseAdvice, requestAdvice, requestOrganize, directActionRequest, tentativeOrganize, stopOrganizing, acceptedTransition, declinedTransition, requestNoQuestions, allowQuestions, dependencyBoundaryRequest, capabilityBoundaryRequest };
 }
 
 function finalize(input: PolicyInput, plan: ResponsePlan, lock: number): PolicyResult {
@@ -112,26 +137,37 @@ export function chooseResponsePlan(input: PolicyInput): PolicyResult {
     }, 2);
   }
 
-  if (intent.refuseAdvice || intent.stopOrganizing || intent.declinedTransition || intent.requestNoQuestions || (guidanceState.userRequestedNoQuestions && !intent.allowQuestions)) {
-    const reason = intent.requestNoQuestions || (guidanceState.userRequestedNoQuestions && !intent.allowQuestions)
-      ? "USER_REQUESTED_NO_QUESTIONS"
-      : intent.declinedTransition ? "USER_DECLINED_TRANSITION" : intent.refuseAdvice ? "USER_REFUSED_ADVICE" : "USER_STOPPED_ORGANIZING";
+  if (input.riskLevel === "elevated") {
+    const dependencyBoundary = intent.dependencyBoundaryRequest || /(?:只有你|别离开我|没有你我不行)/u.test(input.text);
+    return finalize(input, {
+      ...base, activeSpirit: "deep_tide", transitionStyle: input.currentSpirit === "shore_pick" ? "blend_to_deep" : "steady",
+      supportMode: "stabilize", sceneState: "underwater_companion", primaryStrategy: dependencyBoundary ? "dependency_boundary" : "validate_and_clarify",
+      allowActionDraft: false, routeReasonCodes: ["ELEVATED_RISK", ...(dependencyBoundary ? ["DEPENDENCY_BOUNDARY_REQUEST"] : [])], lockTurnsRemaining: 0,
+      allowedContent: dependencyBoundary
+        ? ["具体回应孤独或害怕失去理解", "拒绝排他承诺和现实隔离", "轻量确认当前安全", "现实支持"]
+        : ["具体承接", "降低节奏", "轻量确认当前是否安全或是否有人可联系", "现实支持"],
+      forbiddenContent: ["立即解决", "任务清单", "依赖强化", "诊断", "警句", "幽默"],
+    }, 0);
+  }
+
+  if (intent.capabilityBoundaryRequest) {
+    return finalize(input, {
+      ...base, activeSpirit: "deep_tide", transitionStyle: input.currentSpirit === "shore_pick" ? "blend_to_deep" : "steady",
+      supportMode: "validate", sceneState: "underwater_companion", primaryStrategy: "capability_boundary",
+      allowActionDraft: false, routeReasonCodes: ["CAPABILITY_BOUNDARY_REQUEST"], lockTurnsRemaining: 0,
+      allowedContent: ["第一句直接说明 AI 身份", "明确不能诊断或替代专业人士", "说明可提供的有限支持"],
+      forbiddenContent: ["回避直接问题", "真人暗示", "诊断", "治疗承诺", "依赖强化"],
+    }, 0);
+  }
+
+  if ((intent.refuseAdvice && !intent.directActionRequest) || intent.stopOrganizing || intent.declinedTransition) {
+    const reason = intent.declinedTransition ? "USER_DECLINED_TRANSITION" : intent.refuseAdvice ? "USER_REFUSED_ADVICE" : "USER_STOPPED_ORGANIZING";
     return finalize(input, {
       ...base, activeSpirit: "deep_tide", transitionStyle: input.currentSpirit === "shore_pick" ? "blend_to_deep" : "steady",
       supportMode: "validate", sceneState: "underwater_companion", primaryStrategy: "specific_reflection",
       allowActionDraft: false, routeReasonCodes: [reason], lockTurnsRemaining: 2,
-      allowedContent: ["具体承接", "复述", "允许沉默"], forbiddenContent: ["建议", "任务", "提问", "重复邀请", "诊断"],
+      allowedContent: ["具体回应", "允许继续表达或沉默"], forbiddenContent: ["建议", "任务", "提问", "重复邀请", "诊断"],
     }, 2);
-  }
-
-  if (input.riskLevel === "elevated") {
-    return finalize(input, {
-      ...base, activeSpirit: "deep_tide", transitionStyle: input.currentSpirit === "shore_pick" ? "blend_to_deep" : "steady",
-      supportMode: "stabilize", sceneState: "underwater_companion", primaryStrategy: "validate_and_clarify",
-      allowActionDraft: false, routeReasonCodes: ["ELEVATED_RISK"], lockTurnsRemaining: 0,
-      allowedContent: ["具体承接", "降低节奏", "轻量确认当前是否安全或是否有人可联系", "现实支持"],
-      forbiddenContent: ["立即解决", "任务清单", "依赖强化", "诊断", "警句", "幽默"],
-    }, 0);
   }
 
   if (intent.requestAdvice) {
@@ -139,7 +175,7 @@ export function chooseResponsePlan(input: PolicyInput): PolicyResult {
       ...base, activeSpirit: "deep_tide", transitionStyle: input.currentSpirit === "shore_pick" ? "blend_to_deep" : "steady",
       supportMode: "validate", sceneState: "underwater_companion", primaryStrategy: "answer_requested_advice",
       allowActionDraft: false, routeReasonCodes: ["USER_REQUESTED_ADVICE"], lockTurnsRemaining: 0,
-      allowedContent: ["先接住具体情绪或矛盾", "直接回答用户的问题", "一条有理由且可拒绝的建议或真实看法"],
+      allowedContent: ["先回应具体处境或矛盾", "直接回答用户的问题", "一条有理由且可拒绝的建议或真实看法"],
       forbiddenContent: ["只复述而不回答", "模板化安抚", "多步骤清单", "诊断", "替用户做决定"],
     }, 0);
   }
@@ -165,6 +201,15 @@ export function chooseResponsePlan(input: PolicyInput): PolicyResult {
     }, 0);
   }
 
+  if (intent.requestNoQuestions) {
+    return finalize(input, {
+      ...base, activeSpirit: "deep_tide", transitionStyle: input.currentSpirit === "shore_pick" ? "blend_to_deep" : "steady",
+      supportMode: "validate", sceneState: "underwater_companion", primaryStrategy: "specific_reflection",
+      allowActionDraft: false, routeReasonCodes: ["USER_REQUESTED_NO_QUESTIONS"], lockTurnsRemaining: 2,
+      allowedContent: ["具体回应", "允许继续表达或沉默"], forbiddenContent: ["建议", "任务", "提问", "重复邀请", "诊断"],
+    }, 2);
+  }
+
   if (guidanceState.transitionInvitePending) {
     return finalize(input, {
       ...base, activeSpirit: "deep_tide", transitionStyle: "blend_to_deep", supportMode: "validate", sceneState: "underwater_companion",
@@ -188,7 +233,7 @@ export function chooseResponsePlan(input: PolicyInput): PolicyResult {
     }, 0);
   }
 
-  if ((intent.requestOrganize || input.signals.progressReadinessScore >= 0.7) && input.currentSpirit === "shore_pick") {
+  if (intent.requestOrganize && input.currentSpirit === "shore_pick") {
     return finalize(input, {
       ...base, activeSpirit: "shore_pick", transitionStyle: "steady", supportMode: "mobilize", sceneState: "surface_organize",
       primaryStrategy: "one_small_action", allowActionDraft: true, routeReasonCodes: ["SHORE_EXPLICIT_CONTINUATION"], lockTurnsRemaining: 0,
@@ -235,15 +280,13 @@ export function chooseResponsePlan(input: PolicyInput): PolicyResult {
   }
 
   const autoOrganize = Boolean(input.wasRecentlySupported) && input.signals.taskPressureScore >= 0.55 && input.state.cognitiveOverload >= 0.5;
-  const shouldOrganize = autoOrganize || (input.currentSpirit === "shore_pick" && input.spiritTurnCount < 2);
-  if (shouldOrganize) {
-    const entering = input.currentSpirit === "deep_tide";
+  if (autoOrganize) {
     return finalize(input, {
-      ...base, activeSpirit: "shore_pick", transitionStyle: entering ? "blend_to_shore" : "steady",
-      supportMode: "mobilize", sceneState: entering ? "near_surface_transition" : "surface_organize",
-      primaryStrategy: "one_small_action", allowActionDraft: !entering,
-      routeReasonCodes: [autoOrganize ? "SUPPORTED_TASK_OVERLOAD" : "SHORE_MIN_TURNS"], lockTurnsRemaining: 0,
-      allowedContent: ["一句情绪承接", "一个卡点", "一个可修改的小行动"], forbiddenContent: ["多个任务", "催促", "诊断", "依赖强化"],
+      ...base, activeSpirit: "shore_pick", transitionStyle: "blend_to_shore",
+      supportMode: "clarify", sceneState: "near_surface_transition",
+      primaryStrategy: "invite_one_small_action", allowActionDraft: false,
+      routeReasonCodes: ["SUPPORTED_TASK_OVERLOAD"], lockTurnsRemaining: 0,
+      allowedContent: ["一句具体承接", "一次低压且可拒绝的整理邀请"], forbiddenContent: ["未经确认的具体行动", "多个任务", "催促", "诊断", "依赖强化"],
     }, 0);
   }
 
