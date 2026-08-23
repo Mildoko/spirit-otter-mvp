@@ -8,7 +8,7 @@ test("首次进入、自动整理、刷新恢复、邀请码不可复用、安�
   await page.getByLabel("一次性邀请码").fill(inviteCode!);
   for (const checkbox of await page.getByRole("checkbox").all()) await checkbox.check();
   await page.getByRole("button", { name: "进入静水区" }).click();
-  await expect(page.getByText("浮屿", { exact: true })).toBeVisible();
+  await expect(page.getByText("BoonZoom", { exact: true })).toBeVisible();
   const reminderClose = page.getByRole("button", { name: "关闭提醒" });
   if (await reminderClose.isVisible()) await reminderClose.click();
 

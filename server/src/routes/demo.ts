@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ChatTurnResponse, EmotionDiagnostics, EmotionState, PublicFollowup } from "@otter/shared";
 import { buildVisualCue } from "../modules/support/visual-cue.js";
@@ -44,11 +44,22 @@ const memoryDecisionSchema = z.discriminatedUnion("action", [
 const relationDecisionSchema = z.object({ action: z.enum(["confirm", "disable", "enable", "reject"]) }).strict();
 const pickState = (state: EmotionState) => Object.fromEntries(dimensions.map((key) => [key, state[key]])) as Pick<EmotionState, typeof dimensions[number]>;
 
+function codesMatch(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual.trim().toUpperCase());
+  const expectedBuffer = Buffer.from(expected.trim().toUpperCase());
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
 export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrator: Pick<SupportOrchestrator, "run">, store: DemoStore): void {
   const browserStores = new Map<string, DemoStore>();
-  const storeFor = (request: FastifyRequest): DemoStore => {
+  const authorizedSessions = new Set<string>();
+  const sessionIdFor = (request: FastifyRequest): string | null => {
     const sessionId = request.headers["x-otter-demo-session"];
-    if (typeof sessionId !== "string" || !/^[0-9a-f-]{36}$/i.test(sessionId)) return store;
+    return typeof sessionId === "string" && /^[0-9a-f-]{36}$/i.test(sessionId) ? sessionId : null;
+  };
+  const storeFor = (request: FastifyRequest): DemoStore => {
+    const sessionId = sessionIdFor(request);
+    if (!sessionId) return store;
     let browserStore = browserStores.get(sessionId);
     if (!browserStore) {
       browserStore = new (store.constructor as new () => DemoStore)();
@@ -56,12 +67,34 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
     }
     return browserStore;
   };
+  if (env.EXTERNAL_PREVIEW_ENABLED) {
+    const publicPaths = new Set(["/api/health", "/api/runtime", "/api/auth/redeem-invite"]);
+    app.addHook("preHandler", async (request, reply) => {
+      const path = request.url.split("?", 1)[0] ?? request.url;
+      if (!path.startsWith("/api/") || publicPaths.has(path)) return;
+      const sessionId = sessionIdFor(request);
+      if (!sessionId || !authorizedSessions.has(sessionId)) {
+        return reply.code(401).send({ error: { code: "PREVIEW_CODE_REQUIRED", message: "请先输入本次体验码" } });
+      }
+    });
+  }
   registerLocalWebRoutes(app);
   app.get("/api/health", async () => ({ status: "ok" }));
-  app.post("/api/auth/redeem-invite", async (request, reply) => {
+  app.post("/api/auth/redeem-invite", {
+    config: { rateLimit: { max: env.NODE_ENV === "test" ? 1200 : 8, timeWindow: "10 minutes" } },
+  }, async (request, reply) => {
     const body = demoRedeemSchema.parse(request.body);
-    if (body.inviteCode.toUpperCase() !== lanDemoInviteCode) {
+    const expectedCode = env.EXTERNAL_PREVIEW_ENABLED ? env.EXTERNAL_PREVIEW_CODE : lanDemoInviteCode;
+    if (!codesMatch(body.inviteCode, expectedCode)) {
       return reply.code(401).send({ error: { code: "INVALID_INVITE", message: "邀请码无效" } });
+    }
+    if (env.EXTERNAL_PREVIEW_ENABLED) {
+      const sessionId = sessionIdFor(request);
+      if (!sessionId) return reply.code(400).send({ error: { code: "INVALID_PREVIEW_SESSION", message: "体验会话无效，请刷新页面后重试" } });
+      if (!authorizedSessions.has(sessionId) && authorizedSessions.size >= env.EXTERNAL_PREVIEW_MAX_SESSIONS) {
+        return reply.code(503).send({ error: { code: "PREVIEW_CAPACITY_REACHED", message: "本次体验人数已满" } });
+      }
+      authorizedSessions.add(sessionId);
     }
     const sessionStore = storeFor(request);
     return { researchId: sessionStore.researchId, conversationId: sessionStore.conversationId };
@@ -261,11 +294,15 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
   app.post("/api/auth/logout", async (request, reply) => {
     const store = storeFor(request);
     store.reset();
+    const sessionId = sessionIdFor(request);
+    if (sessionId) authorizedSessions.delete(sessionId);
     return reply.code(204).send();
   });
   app.delete("/api/me/data", async (request, reply) => {
     const store = storeFor(request);
     store.reset();
+    const sessionId = sessionIdFor(request);
+    if (sessionId) authorizedSessions.delete(sessionId);
     return reply.code(204).send();
   });
   if (process.env.E2E_MODE === "demo") {

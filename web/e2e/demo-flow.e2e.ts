@@ -81,6 +81,32 @@ test("演示模式完成深汐、自动混合、拾岸、行动和安全退场",
   await expect(page.locator(".emotion-diagnostics")).toHaveCount(0);
 });
 
+test("准入按钮直接解锁默认全开的声音设置", async ({ page }) => {
+  await installAudioStubs(page);
+  let redeemed = false;
+  const bootstrap = {
+    researchId: "DEMO-LOCAL", researchContact: "邀请人", aiReminder: "你正在与 AI 系统互动。",
+    conversation: { id: "demo-conversation" }, messages: [], actions: [], followups: [],
+    visit: { visitId: "visit-sound", currentVisitAt: new Date().toISOString(), isReturning: false },
+  };
+  await page.route("**/api/session/bootstrap", (route) => redeemed
+    ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(bootstrap) })
+    : route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { code: "PREVIEW_CODE_REQUIRED", message: "请先输入本次体验码" } }) }));
+  await page.route("**/api/auth/redeem-invite", (route) => {
+    redeemed = true;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ researchId: "DEMO-LOCAL", conversationId: "demo-conversation" }) });
+  });
+  await page.goto("/");
+  await page.getByLabel("本次体验码").fill("OTTER-PREVIEW-TEST");
+  for (const checkbox of await page.locator(".consent-list input[type=checkbox]").all()) await checkbox.check();
+  await page.getByRole("button", { name: "进入静水区并开启声音" }).click();
+  await expect(page.getByRole("button", { name: "静音" })).toBeVisible();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  for (const label of ["声音总开关", "tata 回复语音", "场景背景音乐", "场景互动音效"]) {
+    await expect(page.getByRole("checkbox", { name: label })).toBeChecked();
+  }
+});
+
 test("情绪推测可纠正并在同一浏览器刷新后恢复", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
@@ -90,11 +116,18 @@ test("情绪推测可纠正并在同一浏览器刷新后恢复", async ({ page 
   await expect(interpretation).toContainText("愤怒");
   await expect(page.getByRole("region", { name: "与 tata 的对话" }).getByRole("region", { name: "tata 的情绪推测" })).toHaveCount(0);
   const box = await interpretation.boundingBox();
-  const viewport = page.viewportSize();
+  const brandBox = await page.locator(".brand").boundingBox();
   expect(box).not.toBeNull();
-  expect(viewport).not.toBeNull();
-  expect(Math.abs((box!.x + box!.width / 2) - viewport!.width / 2)).toBeLessThan(3);
-  expect(box!.y).toBeLessThan(140);
+  expect(brandBox).not.toBeNull();
+  expect(Math.abs(box!.x - brandBox!.x)).toBeLessThan(3);
+  expect(box!.y).toBeGreaterThan(brandBox!.y);
+  const surface = await interpretation.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow };
+  });
+  expect(surface).toEqual({ background: "rgba(0, 0, 0, 0)", border: "0px", shadow: "none" });
+  const correctionButton = interpretation.getByRole("button", { name: "不准确" });
+  expect(await correctionButton.evaluate((element) => getComputedStyle(element).borderTopWidth)).not.toBe("0px");
   await page.getByRole("button", { name: "不准确" }).click();
   await page.getByRole("button", { name: "失望" }).click();
   await page.getByRole("button", { name: "采用这些词" }).click();
@@ -157,31 +190,56 @@ test("声音需明确开启，新回复朗读一次，刷新不重播并支持�
   expect(safetySpeech?.rate).toBe(0.93);
 });
 
-test("语音输入只填入独立输入栏，用户确认后才发送", async ({ page }) => {
+test("按住麦克风说话，松开后等待最终识别并自动发送", async ({ page }) => {
   await page.addInitScript(() => {
     class FakeRecognition {
       lang = ""; continuous = false; interimResults = true;
       onresult: ((event: unknown) => void) | null = null;
       onerror: ((event: unknown) => void) | null = null;
       onend: (() => void) | null = null;
-      start() {
+      start() {}
+      stop() {
         queueMicrotask(() => {
           this.onresult?.({ results: [Object.assign([{ transcript: "我想用语音和 tata 说说话" }], { isFinal: true })] });
           this.onend?.();
         });
       }
-      stop() { this.onend?.(); }
       abort() {}
     }
     Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: FakeRecognition });
   });
   await page.goto("/");
   await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
-  await page.getByRole("button", { name: "开始语音输入" }).click();
-  await expect(page.locator(".composer textarea")).toHaveValue("我想用语音和 tata 说说话");
-  await expect(page.locator(".message-user")).toHaveCount(0);
-  await page.getByRole("button", { name: "发送消息" }).click();
+  const microphone = page.getByRole("button", { name: "按住麦克风说话" });
+  const box = await microphone.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await expect(page.getByRole("button", { name: "松开发送语音" })).toBeVisible();
+  await page.mouse.up();
   await expect(page.locator(".message-user").last()).toContainText("我想用语音和 tata 说说话");
+});
+
+test("浏览器不支持语音识别时给出可见反馈", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: undefined });
+    Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, value: undefined });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await page.getByRole("button", { name: "按住麦克风说话" }).press("Space");
+  await expect(page.locator(".operation-notice")).toContainText("当前浏览器不支持语音识别，请使用文字输入");
+});
+
+test("手机竖屏进入后提示切换横屏并允许保留文字退路", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const prompt = page.getByRole("dialog", { name: "请把手机横过来" });
+  await expect(prompt).toBeVisible();
+  await expect(prompt.getByRole("button", { name: "全屏并尝试横屏" })).toBeVisible();
+  await prompt.getByRole("button", { name: "暂时竖屏使用" }).click();
+  await expect(prompt).toBeHidden();
+  await expect(page.getByRole("region", { name: "灵体水面世界" })).toBeVisible();
 });
 
 test("回访提供五个无催促结果并尊重用户选择", async ({ page }) => {

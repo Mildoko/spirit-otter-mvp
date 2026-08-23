@@ -149,3 +149,74 @@ describe("demo mode API contract", () => {
     expect(reset.json().reply.content).not.toContain("先不继续追问");
   });
 });
+
+describe("external preview access control", () => {
+  let app: FastifyInstance;
+  const previewCode = "OTTER-PREVIEW-ABC123";
+  const firstSession = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const secondSession = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const consent = {
+    adultConfirmed: true,
+    aiDisclosureAccepted: true,
+    cloudProcessingAccepted: true,
+    dataConsentAccepted: true,
+  };
+
+  beforeEach(async () => {
+    const env = loadEnv({
+      NODE_ENV: "test", OTTER_RUNTIME_MODE: "demo", DATABASE_URL: "postgresql://unused/unused",
+      SESSION_SECRET: "preview-test-secret-with-more-than-thirty-two-characters", COOKIE_SECURE: "false",
+      WEB_ORIGIN: "http://127.0.0.1:3001", LLM_API_KEY: "", BUILD_VERSION: "preview-test",
+      EXTERNAL_PREVIEW_ENABLED: "true", EXTERNAL_PREVIEW_CODE: previewCode, EXTERNAL_PREVIEW_MAX_SESSIONS: "1",
+    });
+    app = await buildApp(env, undefined, { demoStore: new DemoStore() });
+    await app.ready();
+  });
+
+  afterEach(async () => app.close());
+
+  it("requires the preview code before any session data is available", async () => {
+    expect((await app.inject({ method: "GET", url: "/api/runtime" })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/api/session/bootstrap", headers: { "x-otter-demo-session": firstSession } })).statusCode).toBe(401);
+    expect((await app.inject({
+      method: "POST", url: "/api/auth/redeem-invite", headers: { "x-otter-demo-session": firstSession },
+      payload: { inviteCode: "WRONG-PREVIEW-CODE", ...consent },
+    })).statusCode).toBe(401);
+
+    const redeemed = await app.inject({
+      method: "POST", url: "/api/auth/redeem-invite", headers: { "x-otter-demo-session": firstSession },
+      payload: { inviteCode: previewCode.toLowerCase(), ...consent },
+    });
+    expect(redeemed.statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/api/session/bootstrap", headers: { "x-otter-demo-session": firstSession } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/api/session/bootstrap", headers: { "x-otter-demo-session": secondSession } })).statusCode).toBe(401);
+  });
+
+  it("accepts same-origin HTTPS writes forwarded by the loopback tunnel", async () => {
+    const publicOrigin = "https://preview.example.test";
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/redeem-invite",
+      remoteAddress: "127.0.0.1",
+      headers: {
+        host: "preview.example.test",
+        origin: publicOrigin,
+        "x-forwarded-proto": "https",
+        "x-otter-demo-session": firstSession,
+      },
+      payload: { inviteCode: previewCode, ...consent },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("enforces the configured concurrent preview capacity", async () => {
+    const redeem = (session: string) => app.inject({
+      method: "POST", url: "/api/auth/redeem-invite", headers: { "x-otter-demo-session": session },
+      payload: { inviteCode: previewCode, ...consent },
+    });
+    expect((await redeem(firstSession)).statusCode).toBe(200);
+    const capacity = await redeem(secondSession);
+    expect(capacity.statusCode).toBe(503);
+    expect(capacity.json().error.code).toBe("PREVIEW_CAPACITY_REACHED");
+  });
+});

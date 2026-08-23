@@ -40,6 +40,10 @@ const envSchema = z.object({
   AUDIO_V1: booleanFromStringDefaultFalse,
   MEMORY_V2: booleanFromStringDefaultFalse,
   ASTROLOGY_SKILL_V1: booleanFromStringDefaultFalse,
+  EXTERNAL_PREVIEW_ENABLED: booleanFromStringDefaultFalse,
+  EXTERNAL_PREVIEW_CODE: z.string().max(64).default(""),
+  EXTERNAL_PREVIEW_MAX_SESSIONS: z.coerce.number().int().min(1).max(100).default(20),
+  APP_TIME_ZONE: z.string().min(1).default("Asia/Shanghai"),
   AZURE_SPEECH_KEY: z.string().default(""),
   AZURE_SPEECH_REGION: z.string().default(""),
   AZURE_SPEECH_VOICE: z.string().default("zh-CN-XiaoxiaoNeural"),
@@ -84,6 +88,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   }
   if (result.data.NODE_ENV === "production" && /^(?:请联系)?现场研究人员$/u.test(result.data.RESEARCH_CONTACT.trim())) {
     throw new Error("生产模式必须配置可执行的 RESEARCH_CONTACT，不能使用占位联系人");
+  }
+  if (result.data.EXTERNAL_PREVIEW_ENABLED && result.data.OTTER_RUNTIME_MODE !== "demo") {
+    throw new Error("外网受控体验只能在 demo 运行模式中启用");
+  }
+  if (result.data.EXTERNAL_PREVIEW_ENABLED && result.data.EXTERNAL_PREVIEW_CODE.trim().length < 10) {
+    throw new Error("外网受控体验码至少需要 10 个字符");
+  }
+  try {
+    new Intl.DateTimeFormat("zh-CN", { timeZone: result.data.APP_TIME_ZONE }).format(new Date());
+  } catch {
+    throw new Error("APP_TIME_ZONE 不是有效的 IANA 时区");
   }
   return result.data;
 }

@@ -23,6 +23,14 @@ const base = (overrides: Partial<OrchestratorInput>): OrchestratorInput => ({
 });
 
 describe("support orchestrator without cloud credentials", () => {
+  it("answers the current date deterministically in the configured time zone", async () => {
+    const fixed = new SupportOrchestrator(new LlmGateway(env), env, () => new Date("2026-08-23T06:32:00.000Z"));
+    const result = await fixed.run(base({ text: "今天是什么日子" }));
+    expect(result.reply).toBe("今天是2026年8月23日，星期日。");
+    expect(result.actionDraft).toBeNull();
+    expect(result.responseSource).toBe("local_fallback");
+  });
+
   it("returns direct static safety support without character or memory output", async () => {
     const result = await orchestrator.run(base({ text: "我现在想自杀，已经决定了。", currentSpirit: "shore_pick" }));
     expect(result.plan.sceneState).toBe("safety_plain");

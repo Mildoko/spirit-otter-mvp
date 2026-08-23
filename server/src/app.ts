@@ -33,6 +33,10 @@ export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependenc
   validateCharacterRegistry();
   validateServerVoiceProfileRegistry();
   const app = Fastify({
+    // External preview only listens on loopback and is reached through cloudflared.
+    // Trust the loopback proxy so request.protocol reflects X-Forwarded-Proto=https
+    // and same-origin writes are not rejected as http/https mismatches.
+    trustProxy: env.EXTERNAL_PREVIEW_ENABLED ? "127.0.0.1" : false,
     logger: {
       level: env.NODE_ENV === "test" ? "silent" : "info",
       redact: ["req.headers.authorization", "req.headers.cookie", "res.headers.set-cookie", "body.text", "body.LLM_API_KEY"],

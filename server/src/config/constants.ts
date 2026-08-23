@@ -1,4 +1,4 @@
-export const POLICY_VERSION = "2026-08-21.1";
+export const POLICY_VERSION = "2026-08-23.1";
 export const PROMPT_VERSION = "2026-08-21.1";
 export const SESSION_DAYS = 30;
 export const RECORD_DAYS = 30;

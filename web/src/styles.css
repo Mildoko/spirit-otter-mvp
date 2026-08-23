@@ -43,10 +43,11 @@ button { cursor: pointer; }
 .ripple-two { width: 28vw; height: 8vw; right: -7vw; bottom: 10vh; }
 
 .topbar { height: 74px; padding: 0 clamp(20px, 4vw, 60px); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(214, 244, 238, .11); position: relative; z-index: 5; }
+.brand-stack { min-width: 0; display: grid; gap: 3px; position: relative; }
 .brand { display: flex; align-items: center; gap: 10px; color: #b9d5d1; font-size: 13px; }
 .brand strong { color: white; font-family: "Noto Serif SC"; font-size: 19px; }
 .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: #dcc08e; box-shadow: 0 0 15px #dcc08e; }
-.topbar-actions { display: flex; gap: 12px; align-items: center; }
+.topbar-actions { flex: 0 0 auto; display: flex; gap: 12px; align-items: center; }
 .sound-button { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 999px; color: #e9f6f3; background: rgba(7,29,43,.46); backdrop-filter: blur(10px); font-size: 12px; }
 .sound-button > span { color: #f5d79c; font-size: 13px; }
 .sound-button.sound-muted { color: #9ab6b2; }
@@ -129,10 +130,22 @@ button { cursor: pointer; }
 .composer textarea::placeholder { color: #729b96; }
 .composer > button { width: 38px; height: 38px; border-radius: 50%; border: 0; background: #d9c29a; color: #12383e; font-size: 21px; }
 .composer > button:disabled { opacity: .35; }
-.composer > .voice-input { width: auto; min-width: 68px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #cce2df; background: rgba(255,255,255,.08); font-size: 12px; }
+.composer > .voice-input { width: 42px; min-width: 42px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #cce2df; background: rgba(255,255,255,.08); touch-action: none; user-select: none; -webkit-user-select: none; }
 .composer > .voice-input-listening { color: #fff0d1; border: 1px solid rgba(255,219,157,.45); background: rgba(170,104,57,.26); animation: listening-pulse 1.2s ease-in-out infinite; }
+.composer > .voice-input-transcribing, .composer > .voice-input-sending { color: #f0d8aa; background: rgba(122,103,67,.28); animation: listening-pulse 1.2s ease-in-out infinite; }
+.composer > .voice-input-error { color: #ffc5bc; background: rgba(122,51,47,.3); }
 @keyframes listening-pulse { 50% { box-shadow: 0 0 0 7px rgba(225,192,136,.08); } }
 .composer-note { margin: 8px 24px 14px; color: #6f9590; font-size: 10px; text-align: center; }
+
+.landscape-prompt { position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 28px; color: #eaf7f4; background: radial-gradient(circle at 50% 20%, rgba(36,103,112,.98), rgba(7,31,38,.99) 65%); text-align: center; }
+.landscape-prompt h2 { margin: 0; font: 600 clamp(28px, 9vw, 42px)/1.2 "STSong", "SimSun", serif; }
+.landscape-prompt > p:not(.eyebrow) { max-width: 330px; margin: 2px 0 14px; color: #b9d5d1; line-height: 1.65; }
+.landscape-prompt .primary-button { width: min(300px, 100%); }
+.landscape-continue { padding: 10px 16px; border: 0; color: #8fb3ae; background: transparent; }
+.landscape-phone { position: relative; width: 66px; height: 112px; margin: 0 0 18px; border: 3px solid #d9c29a; border-radius: 13px; transform: rotate(90deg); animation: phone-turn 1.4s ease-in-out both; }
+.landscape-phone::before { content: ""; position: absolute; top: 7px; left: 50%; width: 18px; height: 3px; border-radius: 999px; background: #d9c29a; transform: translateX(-50%); }
+.landscape-phone span { position: absolute; inset: 15px 6px 7px; border-radius: 5px; background: radial-gradient(circle at 65% 55%, rgba(230,200,142,.4), rgba(48,116,122,.32)); }
+@keyframes phone-turn { from { transform: rotate(0deg); } to { transform: rotate(90deg); } }
 
 .scene-world-shell { background: #071426; }
 .scene-world-shell .topbar { position: fixed; inset: 0 0 auto; z-index: 12; background: linear-gradient(180deg, rgba(5,14,29,.76), transparent); border-bottom-color: transparent; }
@@ -242,6 +255,15 @@ button { cursor: pointer; }
   .memory-center-body { padding: 20px; }
   .memory-edit { inset: auto 10px 10px; }
 }
+@media (max-height: 520px) and (orientation: landscape) {
+  .topbar { height: 56px; padding-inline: 14px; }
+  .world-experience-layout { inset: 56px 0 0; }
+  .conversation-drawer { top: 62px; bottom: auto; height: calc(100dvh - 126px); min-height: 220px; }
+  .conversation-drawer .composer { bottom: 8px; }
+  .scene-view-toggle { bottom: 10px; padding-block: 8px; }
+  .scene-otter-access { top: 66%; height: 74px; }
+  .scene-world > .tata-welcome-bubble { top: 29%; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
   .emotion-float { opacity: 1; }
@@ -308,23 +330,26 @@ button { cursor: pointer; }
 
 .emotion-diagnostics > div { display: grid; grid-template-columns: 1fr auto 1rem; gap: 0.4rem; padding-top: 0.25rem; }
 .emotion-diagnostics p { margin: 0.5rem 0 0; opacity: 0.75; overflow-wrap: anywhere; }
-.emotion-interpretation { margin: 0.75rem; padding: 0.9rem; border: 1px solid rgba(32, 98, 104, 0.18); border-radius: 0.9rem; background: rgba(238, 250, 247, 0.88); color: #173e49; box-shadow: 0 10px 30px rgba(9, 47, 54, 0.08); }
-.emotion-interpretation-overlay { position: fixed; top: 86px; left: 50%; z-index: 14; width: min(460px, calc(100vw - 32px)); transform: translateX(-50%); pointer-events: none; }
-.emotion-interpretation-overlay .emotion-interpretation { max-height: min(42vh, 360px); margin: 0; overflow-y: auto; pointer-events: auto; background: rgba(238, 250, 247, 0.94); box-shadow: 0 16px 48px rgba(2, 18, 30, 0.24); backdrop-filter: blur(14px); }
-.emotion-interpretation-head { display: grid; gap: 0.25rem; }
-.emotion-interpretation-head span { font-size: 0.72rem; opacity: 0.68; }
-.emotion-interpretation-head strong { font-size: 0.95rem; }
-.emotion-interpretation > p, .emotion-correction-editor > p { margin: 0.45rem 0; font-size: 0.72rem; line-height: 1.5; opacity: 0.72; }
-.emotion-verdict-actions, .emotion-correction-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.7rem; }
-.emotion-verdict-actions button, .emotion-correction-actions button, .emotion-label-grid button { padding: 0.42rem 0.7rem; border: 1px solid rgba(31, 91, 98, 0.22); border-radius: 999px; color: #173e49; background: rgba(255,255,255,.72); cursor: pointer; }
+.emotion-interpretation-inline { width: min(680px, calc(100vw - 250px)); min-width: 0; color: #d8e9e6; }
+.emotion-interpretation { position: relative; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; display: flex; align-items: center; gap: 0.45rem; color: inherit; background: transparent; box-shadow: none; }
+.emotion-interpretation-head { min-width: 0; display: flex; align-items: baseline; gap: 0.35rem; white-space: nowrap; }
+.emotion-interpretation-head span { flex: 0 0 auto; color: #91b6b1; font-size: 0.68rem; font-weight: 400; }
+.emotion-interpretation-head strong { min-width: 0; overflow: hidden; color: #f0e1bd; font-size: 0.78rem; font-weight: 600; text-overflow: ellipsis; }
+.emotion-interpretation > p { margin: 0; overflow: hidden; color: #789f9a; font-size: 0.66rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.emotion-correction-editor { position: absolute; top: calc(100% + 12px); left: 0; z-index: 30; width: min(560px, calc(100vw - 32px)); max-height: min(58vh, 420px); overflow-y: auto; color: #e4f0ed; text-shadow: 0 2px 12px rgba(0,0,0,.9); }
+.emotion-correction-editor > p { margin: 0 0 0.45rem; font-size: 0.72rem; line-height: 1.5; opacity: 0.86; }
+.emotion-verdict-actions, .emotion-correction-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0; }
+.emotion-verdict-actions button, .emotion-correction-actions button, .emotion-label-grid button { padding: 0.28rem 0.58rem; border: 1px solid rgba(202, 228, 223, 0.3); border-radius: 999px; color: #dcebe8; background: rgba(7,31,43,.56); cursor: pointer; }
 .emotion-label-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .emotion-label-grid button[aria-pressed="true"] { color: #f4fbf9; background: #236c72; border-color: #236c72; }
-.emotion-intensity { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; font-size: 0.78rem; }
+.emotion-intensity { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; color: #e4f0ed; font-size: 0.78rem; }
 .emotion-intensity select { padding: 0.3rem 0.45rem; border: 1px solid rgba(31, 91, 98, 0.24); border-radius: 0.45rem; color: #173e49; background: white; }
 .emotion-interpretation button:disabled { cursor: default; opacity: 0.45; }
 @media (max-width: 560px) {
-  .emotion-interpretation-overlay { top: 78px; width: calc(100vw - 24px); }
-  .emotion-interpretation-overlay .emotion-interpretation { max-height: 34vh; }
+  .emotion-interpretation-inline { width: min(390px, calc(100vw - 118px)); }
+  .emotion-interpretation > p { display: none; }
+  .emotion-interpretation-head strong { max-width: 105px; }
+  .emotion-verdict-actions button { padding-inline: 0.46rem; }
 }
 .setting-toggle { display: flex; gap: 0.55rem; align-items: center; margin: 1rem 0; }
 

@@ -34,6 +34,7 @@ import { chooseResponsePlan, detectConversationIntent } from "./policy-router.js
 import { advanceGuidanceState, parseGuidanceState } from "./guidance-state.js";
 import { resolveRiskLevel, runHardRiskGuard } from "./risk-guard.js";
 import { fallbackReply, highRiskResponse } from "./static-responses.js";
+import { resolveCurrentDateReply } from "./runtime-facts.js";
 
 export interface OrchestratorInput {
   text: string;
@@ -75,7 +76,7 @@ export interface OrchestratorResult {
 }
 
 export class SupportOrchestrator {
-  constructor(private readonly gateway: LlmGateway, private readonly env: AppEnv) {}
+  constructor(private readonly gateway: LlmGateway, private readonly env: AppEnv, private readonly now: () => Date = () => new Date()) {}
 
   async run(input: OrchestratorInput): Promise<OrchestratorResult> {
     const guidanceState = parseGuidanceState(input.guidanceState);
@@ -149,6 +150,19 @@ export class SupportOrchestrator {
         skillResolution,
         skillDiagnostics: buildSkillDiagnostics(skillResolution, []),
         nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent: "none", topicSkill: nextTopicState }),
+      };
+    }
+
+    const currentDateReply = resolveCurrentDateReply(input.text, this.now(), this.env.APP_TIME_ZONE);
+    if (currentDateReply) {
+      return {
+        signals, rawState, state, emotionHypothesis, riskLevel, ruleCodes: hardRisk.ruleCodes,
+        plan: routed.plan, nextSpiritTurnCount: routed.nextSpiritTurnCount, nextCompanionLockTurns: routed.nextCompanionLockTurns,
+        reply: currentDateReply, actionDraft: null, memoryCandidates: [], memoryRelationCandidates: [],
+        metrics: analyzed ? [analyzed.metrics] : [], signalSource: analyzed ? "cloud_model" : "local_fallback",
+        responseSource: "local_fallback", characterVersion: CHARACTER_VERSION,
+        skillResolution, skillDiagnostics: buildSkillDiagnostics(skillResolution, []),
+        nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply: currentDateReply, deliveredAccent: "none", topicSkill: nextTopicState }),
       };
     }
 

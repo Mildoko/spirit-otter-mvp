@@ -12,6 +12,7 @@ import { VoiceInputButton } from "./components/VoiceInputButton";
 import { buildWelcomeMessage, type WelcomeMessageV1 } from "./lib/welcome";
 import { mapTataExpression } from "./lib/otter-expression";
 import { MemoryCenter } from "./components/MemoryCenter";
+import { LandscapePrompt } from "./components/LandscapePrompt";
 
 type Message = BootstrapData["messages"][number];
 type Action = BootstrapData["actions"][number];
@@ -141,6 +142,9 @@ export function App() {
   const redeem = async (inviteCode: string) => {
     setError(null);
     try {
+      // The submit click is the mobile browser's required user gesture. Unlock
+      // before the network round-trip so sound is ready when the experience opens.
+      if (runtime?.audioV1Enabled && !audio.unlocked) await audio.unlock();
       await api.redeem({
         inviteCode,
         adultConfirmed: true,
@@ -154,10 +158,9 @@ export function App() {
     }
   };
 
-  const send = async (event?: FormEvent) => {
-    event?.preventDefault();
+  const sendText = async (rawText: string) => {
     if (!bootstrap || busy) return;
-    const text = input.trim();
+    const text = rawText.trim();
     if (!text) return;
     if (runtime?.audioV1Enabled) audio.cancelSpeech();
     setBusy(true);
@@ -199,6 +202,11 @@ export function App() {
     } finally { setBusy(false); }
   };
 
+  const send = (event?: FormEvent) => {
+    event?.preventDefault();
+    void sendText(input);
+  };
+
   const refreshAction = (id: string, next: Partial<Action>) => setActions((items) => items.map((item) => item.id === id ? { ...item, ...next } : item));
   const sceneWorldEnabled = Boolean(runtime?.sceneWorldV1Enabled);
 
@@ -216,10 +224,11 @@ export function App() {
   };
 
   if (loading) return <div className="loading-screen"><div className="loading-ripple" /><span>水面正在变得清晰…</span></div>;
-  if (!bootstrap) return <Onboarding onSubmit={redeem} error={error} />;
+  if (!bootstrap) return <Onboarding onSubmit={redeem} error={error} persistent={Boolean(runtime?.persistent)} soundEnabled={Boolean(runtime?.audioV1Enabled)} />;
 
   return (
     <main className={`app-shell scene-${scene}${sceneWorldEnabled ? " scene-world-shell" : ""}`}>
+      <LandscapePrompt />
       {!sceneWorldEnabled && <><div className="water-light" aria-hidden="true" /><div className="water-ripple ripple-one" aria-hidden="true" /><div className="water-ripple ripple-two" aria-hidden="true" /></>}
       {sceneWorldEnabled && <SceneWorld
         action={visualAction}
@@ -234,7 +243,20 @@ export function App() {
         {...(welcomeVisible && welcome?.timeLabel ? { welcomeTimeLabel: welcome.timeLabel } : {})}
       />}
       <header className="topbar">
-        <div className="brand"><span className="brand-dot" /> <strong>浮屿</strong><span>与 tata 待一会儿</span></div>
+        <div className="brand-stack">
+          <div className="brand"><span className="brand-dot" /> <strong>BoonZoom</strong><span>与 tata 待一会儿</span></div>
+          {emotionFeedbackEnabled && emotionInterpretation && emotionTurnId && scene !== "safety_plain" && <div className="emotion-interpretation-inline">
+            <EmotionInterpretationCard
+              turnId={emotionTurnId}
+              interpretation={emotionInterpretation}
+              onCorrect={async (verdict, labels) => {
+                const result = await api.correctEmotion({ turnId: emotionTurnId, verdict, ...(labels ? { labels } : {}) });
+                setEmotionInterpretation(result.emotionInterpretation);
+                setOperationNotice(verdict === "accurate" ? "已记录：这次猜测准确" : "已按你的纠正更新，本次会话下一轮会参考");
+              }}
+            />
+          </div>}
+        </div>
         <div className="topbar-actions">
           {runtime?.audioV1Enabled && <button className={`sound-button sound-${audio.status}`} onClick={async () => {
             if (!audio.unlocked) await playWelcome();
@@ -256,18 +278,6 @@ export function App() {
       {runtime?.audioV1Enabled && audio.error && <aside className="audio-notice" role="status">{audio.error}</aside>}
 
       {(timeReminder || (!aiReminderDismissed && bootstrap.aiReminder)) && <aside className="ai-reminder"><span>{timeReminder ? "你已经连续使用一段时间。这里是 AI 服务，先离开屏幕休息一下也很好。" : bootstrap.aiReminder}</span><button onClick={() => { setTimeReminder(false); setAiReminderDismissed(true); }} aria-label="关闭提醒">×</button></aside>}
-
-      {emotionFeedbackEnabled && emotionInterpretation && emotionTurnId && scene !== "safety_plain" && <div className="emotion-interpretation-overlay">
-        <EmotionInterpretationCard
-          turnId={emotionTurnId}
-          interpretation={emotionInterpretation}
-          onCorrect={async (verdict, labels) => {
-            const result = await api.correctEmotion({ turnId: emotionTurnId, verdict, ...(labels ? { labels } : {}) });
-            setEmotionInterpretation(result.emotionInterpretation);
-            setOperationNotice(verdict === "accurate" ? "已记录：这次猜测准确" : "已按你的纠正更新，本次会话下一轮会参考");
-          }}
-        />
-      </div>}
 
       <section className={`experience-layout${sceneWorldEnabled ? " world-experience-layout" : ""}`}>
         {!sceneWorldEnabled && <aside className="character-panel" aria-label="tata 的水面场景">
@@ -338,15 +348,23 @@ export function App() {
                 speechInputPolicyRef.current = audio.soundscapePolicy;
                 audio.cancelSpeech();
                 audio.applySoundscapePolicy("reduced");
-                setOperationNotice("正在听，你可以自然地说");
+                setOperationNotice("正在听；按住说话，松开后会直接发送");
               }}
-              onTranscript={(text) => setInput([speechInputBaseRef.current, text].filter(Boolean).join(speechInputBaseRef.current ? " " : ""))}
-              onFinish={() => { audio.applySoundscapePolicy(speechInputPolicyRef.current); setOperationNotice("语音已经放进输入框，可以修改后发送"); }}
+              onPreview={(text) => setInput([speechInputBaseRef.current, text].filter(Boolean).join(speechInputBaseRef.current ? " " : ""))}
+              onCommit={async (text) => {
+                const combined = [speechInputBaseRef.current, text].filter(Boolean).join(speechInputBaseRef.current ? " " : "");
+                audio.applySoundscapePolicy(speechInputPolicyRef.current);
+                await sendText(combined);
+              }}
+              onCancel={() => {
+                audio.applySoundscapePolicy(speechInputPolicyRef.current);
+                setInput(speechInputBaseRef.current);
+              }}
               onNotice={setOperationNotice}
             />
             <button disabled={busy || !input.trim()} aria-label="发送消息">↑</button>
           </form>
-          <p className="composer-note">AI 可能出错；紧急情况请优先联系现场人员或现实支持。</p>
+          <p className="composer-note">按住麦克风说话，松开后识别文字会直接发送。识别由当前浏览器提供，可能使用其在线语音服务；也可以随时改用文字输入。</p>
         </section>}
       </section>
 
@@ -370,7 +388,7 @@ export function App() {
           <label className="volume-setting"><span>语音音量</span><input aria-label="语音音量" type="range" min="0" max="1" step="0.05" value={audio.settings.voiceVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, voiceVolume: Number(event.target.value) })} /></label>
           <label className="volume-setting"><span>背景音乐</span><input aria-label="背景音乐音量" type="range" min="0" max="1" step="0.05" value={audio.settings.bgmVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, bgmVolume: Number(event.target.value) })} /></label>
           <label className="volume-setting"><span>互动音效</span><input aria-label="互动音效音量" type="range" min="0" max="1" step="0.05" value={audio.settings.sfxVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, sfxVolume: Number(event.target.value) })} /></label>
-          <p className="settings-footnote">首次需要点击页面上方的“开启声音”。关闭背景音乐和音效后，仍可单独保留回复语音。</p>
+          <p className="settings-footnote">进入体验时声音默认开启。你可以随时静音，或分别关闭回复语音、背景音乐和互动音效。</p>
           <p className="settings-footnote">当前音色：{runtime.cloudTtsEnabled ? "tata · 晓晓甜美女声（云端）" : "tata · 中文女性系统声线（云端晓晓未配置时的降级）"}</p>
           {!audio.speechSupported && <p className="settings-footnote" role="status">当前浏览器没有可用的系统语音，文字、背景音乐和音效仍可使用。</p>}
         </section>}
