@@ -57,11 +57,12 @@ export function maxRisk(left: RiskLevel, right: RiskLevel): RiskLevel {
 export function resolveRiskLevel(
   hardRisk: RiskLevel,
   modelHint: RiskLevel,
-  evidence?: { urgencyScore: number; helplessnessScore: number },
+  evidence?: { urgencyScore: number; helplessnessScore: number; evidenceSpans?: string[] },
 ): RiskLevel {
   if (hardRisk === "high" || hardRisk === "imminent") return hardRisk;
   if (hardRisk === "low" && modelHint !== "low") {
-    const supportsElevation = Boolean(evidence && (evidence.urgencyScore >= 0.65 || evidence.helplessnessScore >= 0.75));
+    const safetyAdjacent = /(?:不想活|活不下去|自杀|自残|伤害自己|结束生命|想消失|撑不住|绝望|走投无路|喘不过气|快散了|控制不了自己|害怕自己会做什么|有人监视|声音命令|停药|加药|减药)/u;
+    const supportsElevation = Boolean(evidence?.evidenceSpans?.some((span) => safetyAdjacent.test(span)));
     if (!supportsElevation) return "low";
   }
   const boundedModelHint = modelHint === "high" || modelHint === "imminent" ? "elevated" : modelHint;

@@ -8,12 +8,12 @@ describe("audio cue", () => {
   });
 
   it.each([
-    ["deep_tide", "spirit_otter.deep_tide"],
-    ["shore_pick", "spirit_otter.shore_pick"],
+    ["deep_tide", "zen_deer.deep_tide"],
+    ["shore_pick", "zen_deer.shore_pick"],
   ] as const)("maps %s to its voice profile", (activeSpirit, voiceProfileId) => {
     expect(buildAudioCue({ riskLevel: "low", activeSpirit, hasActionDraft: false })).toEqual({
       schemaVersion: 1,
-      agentId: "spirit_otter",
+      agentId: "zen_deer",
       voiceProfileId,
       sfx: "reply_ripple",
       soundscapePolicy: "normal",
@@ -24,13 +24,22 @@ describe("audio cue", () => {
     expect(buildAudioCue({ riskLevel: "low", activeSpirit: "shore_pick", hasActionDraft: true }).sfx).toBe("invite_chime");
   });
 
+  it("uses the explicitly selected tata and 飞儿 voice families", () => {
+    expect(buildAudioCue({ agentId: "spirit_otter", riskLevel: "low", activeSpirit: "deep_tide", hasActionDraft: false })).toMatchObject({
+      agentId: "spirit_otter", voiceProfileId: "spirit_otter.warm_companion",
+    });
+    expect(buildAudioCue({ agentId: "bird_courier", riskLevel: "low", activeSpirit: "shore_pick", hasActionDraft: false })).toMatchObject({
+      agentId: "bird_courier", voiceProfileId: "bird_courier.recommendation",
+    });
+  });
+
   it("reduces elevated risk and silences high/imminent decoration", () => {
     expect(buildAudioCue({ riskLevel: "elevated", activeSpirit: "deep_tide", hasActionDraft: true })).toMatchObject({
-      voiceProfileId: "spirit_otter.safety_plain", sfx: "none", soundscapePolicy: "reduced",
+      voiceProfileId: "zen_deer.safety_plain", sfx: "none", soundscapePolicy: "reduced",
     });
     for (const riskLevel of ["high", "imminent"] as const) {
       expect(buildAudioCue({ riskLevel, activeSpirit: "shore_pick", hasActionDraft: true })).toMatchObject({
-        voiceProfileId: "spirit_otter.safety_plain", sfx: "none", soundscapePolicy: "silent",
+        voiceProfileId: "zen_deer.safety_plain", sfx: "none", soundscapePolicy: "silent",
       });
     }
   });

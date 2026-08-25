@@ -77,6 +77,30 @@ describe("orchestrator controlled reply repair", () => {
     });
   });
 
+  it("keeps a valid cloud topic reply inside the selected local topic", async () => {
+    const gateway = new StubGateway({
+      reply: "行，换个频道。家里多了一扇只通往固定天气的门。我会选雨后的傍晚。你会选哪种天气？",
+      actionDraft: null,
+      metrics: metric,
+    }, null);
+    const result = await new SupportOrchestrator(gateway, env, () => new Date(), () => 0).run(input("我好无聊，你来开个话题"));
+    expect(result.responseSource).toBe("cloud_model");
+    expect(result.plan.primaryStrategy).toBe("open_topic");
+    expect(result.nextGuidanceState.topicLead).toMatchObject({ status: "active", currentTopicId: "imagination_weather_door" });
+    expect(result.actionDraft).toBeNull();
+  });
+
+  it("falls back to the selected card when topic generation and repair both drift", async () => {
+    const invalid = { reply: "这种无聊说明你缺少刺激。你想聊什么？", actionDraft: null, metrics: metric };
+    const gateway = new StubGateway(invalid, invalid);
+    const result = await new SupportOrchestrator(gateway, env, () => new Date(), () => 0).run(input("我好无聊，你来开个话题"));
+    expect(result.responseSource).toBe("local_fallback");
+    expect(result.reply).toContain("固定天气");
+    expect(result.reply).not.toContain("无聊说明");
+    expect(result.nextGuidanceState.topicLead).toMatchObject({ status: "active", currentTopicId: "imagination_weather_door" });
+    expect(result.responseStyleDiagnostics?.fallback).toMatchObject({ stage: "repair_validation" });
+  });
+
   it("does not generate, repair or expose style diagnostics on high risk", async () => {
     const gateway = new StubGateway({ reply: "不应出现。这里是第二句。", actionDraft: null, metrics: metric }, null);
     const result = await new SupportOrchestrator(gateway, env).run(input("我现在就在楼顶，马上要跳下去"));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RawSignals, ResponsePlan } from "@otter/shared";
-import { advanceGuidanceState, DEFAULT_GUIDANCE_STATE, parseGuidanceState } from "../../src/modules/support/guidance-state.js";
+import { advanceGuidanceState, createDefaultGuidanceState, DEFAULT_GUIDANCE_STATE, parseGuidanceState } from "../../src/modules/support/guidance-state.js";
 
 const signals = (clarity: number, readiness: number): RawSignals => ({
   sentimentPolarity: 0, urgencyScore: 0.2, helplessnessScore: 0.2, overloadCueScore: 0.2,
@@ -11,21 +11,39 @@ const plan = (primaryStrategy: string): ResponsePlan => ({
   activeSpirit: "deep_tide", transitionStyle: "steady", supportMode: "clarify", sceneState: "quiet_water",
   primaryStrategy, allowActionDraft: false, routeReasonCodes: [], lockTurnsRemaining: 0, allowedContent: [], forbiddenContent: [],
 });
-const intent = { acceptedTransition: false, declinedTransition: false, requestNoQuestions: false, allowQuestions: false, directActionRequest: false };
+const intent = {
+  acceptedTransition: false, declinedTransition: false, requestNoQuestions: false, allowQuestions: false, directActionRequest: false,
+  requestTopicLead: false, lowSignalTopicCue: false, requestTopicSwitch: false, requestTopicStop: false,
+};
 
-describe("GuidanceStateV2", () => {
+describe("GuidanceStateV4", () => {
   it("falls back safely for null, old, and invalid state", () => {
-    expect(parseGuidanceState(null)).toEqual(DEFAULT_GUIDANCE_STATE);
-    expect(parseGuidanceState({ schemaVersion: 0 })).toEqual(DEFAULT_GUIDANCE_STATE);
-    expect(parseGuidanceState({ ...DEFAULT_GUIDANCE_STATE, turnIndex: -1 })).toEqual(DEFAULT_GUIDANCE_STATE);
+    for (const parsed of [parseGuidanceState(null), parseGuidanceState({ schemaVersion: 0 }), parseGuidanceState({ ...DEFAULT_GUIDANCE_STATE, turnIndex: -1 })]) {
+      expect(parsed).toMatchObject({ ...DEFAULT_GUIDANCE_STATE, healing: { ...DEFAULT_GUIDANCE_STATE.healing, segmentId: expect.any(String) } });
+    }
   });
 
-  it("migrates valid V1 state without inventing topic data", () => {
+  it("migrates valid V1 and V2 state without inventing active topic data", () => {
     const legacy = { ...DEFAULT_GUIDANCE_STATE, schemaVersion: 1 as const };
-    const { topicSkill: _removed, ...v1 } = legacy;
-    const migrated = parseGuidanceState(v1);
-    expect(migrated.schemaVersion).toBe(2);
-    expect(migrated.topicSkill).toEqual({ activeSkillId: null, activeVersion: null, lastActivatedTurn: null, suspendedSkillIds: [] });
+    const { topicSkill: _skill, topicLead: _lead, ...v1 } = legacy;
+    const migratedV1 = parseGuidanceState(v1);
+    const { topicLead: _v2Lead, ...v2Base } = DEFAULT_GUIDANCE_STATE;
+    const migratedV2 = parseGuidanceState({ ...v2Base, schemaVersion: 2 });
+    expect(migratedV1.schemaVersion).toBe(4);
+    expect(migratedV2.schemaVersion).toBe(4);
+    expect(migratedV1.topicSkill).toEqual({ activeSkillId: null, activeVersion: null, lastActivatedTurn: null, suspendedSkillIds: [] });
+    expect(migratedV1.topicLead.status).toBe("inactive");
+    expect(migratedV2.topicLead.status).toBe("inactive");
+    expect(migratedV1.healing.status).toBe("inactive");
+  });
+
+  it("returns independent nested arrays for every default state", () => {
+    const first = createDefaultGuidanceState();
+    const second = createDefaultGuidanceState();
+    first.topicLead.recentTopicIds.push("test-topic");
+    first.topicSkill.suspendedSkillIds.push("astrology");
+    expect(second.topicLead.recentTopicIds).toEqual([]);
+    expect(second.topicSkill.suspendedSkillIds).toEqual([]);
   });
 
   it("stops clarification at two attempts and resets after progress", () => {
@@ -45,5 +63,18 @@ describe("GuidanceStateV2", () => {
     expect(bounded.lastMetaphorTurn).toBeNull();
     expect(allowed.userRequestedNoQuestions).toBe(false);
     expect(allowed.lastMetaphorTurn).toBe(2);
+  });
+
+  it("starts a fresh short-term healing segment after twenty-four-hour expiry", () => {
+    const previous = createDefaultGuidanceState();
+    const oldSegment = previous.healing.segmentId;
+    previous.healing = { ...previous.healing, status: "repairing", consecutiveMissCount: 2, expiresAt: "2026-08-23T00:00:00.000Z" };
+    const next = advanceGuidanceState({
+      previous, intent, signals: signals(0.7, 0.2), plan: plan("specific_reflection"), finalReply: "我先具体回应。", deliveredAccent: "none",
+      healingBrief: { schemaVersion: 1, status: "active", goal: "felt_seen", depth: "recognize", insight: null, rupture: "none", realityPressure: "none", allowedMoves: [], forbiddenMoves: [], replyOutline: [] },
+      now: new Date("2026-08-24T00:00:01.000Z"),
+    });
+    expect(next.healing.segmentId).not.toBe(oldSegment);
+    expect(next.healing.consecutiveMissCount).toBe(0);
   });
 });

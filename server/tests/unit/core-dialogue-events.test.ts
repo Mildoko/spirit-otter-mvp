@@ -39,11 +39,16 @@ function ordinaryResult(): OrchestratorResult {
   } as unknown as OrchestratorResult;
 }
 
-describe("Core Dialogue Event v2 contract", () => {
-  it("defines the 13-event minimum set with explicit follow-up state labels", () => {
-    expect(CORE_DIALOGUE_EVENT_VERSION).toBe("event-v2");
-    expect(coreDialogueMinimumEventNames).toHaveLength(13);
+describe("Core Dialogue Event v4 contract", () => {
+  it("defines the minimum set with explicit follow-up and healing state labels", () => {
+    expect(CORE_DIALOGUE_EVENT_VERSION).toBe("event-v4");
+    expect(coreDialogueMinimumEventNames).toHaveLength(14);
     expect(coreDialogueMinimumEventNames).toContain("followup_state_labeled");
+    expect(coreDialogueMinimumEventNames).toContain("healing_turn_completed");
+    expect(() => parseCoreDialogueEventMetadata("conversation_feedback_submitted", {
+      sessionId: "session_1", conversationId: "conversation_1", segmentId: "segment_1", feedbackSchemaVersion: 2,
+      verdict: "not_helpful", understanding: "missed", movement: "unchanged", reason: "repetitive", source: "end_chat",
+    })).not.toThrow();
     expect(() => parseCoreDialogueEventMetadata("followup_state_labeled", {
       sessionId: "session_1", conversationId: "conversation_1", followupId: "followup_1",
       previousState: "not_started", state: "partial_progress", revision: 1, labelSource: "ui_select", transitionValid: true,

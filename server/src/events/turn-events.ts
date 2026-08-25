@@ -190,5 +190,29 @@ export function buildCompletedTurnEvents(input: {
       },
     });
   }
+  if (result.healingBrief?.status !== "inactive" && result.nextGuidanceState?.healing) {
+    events.push({
+      eventName: "healing_turn_completed",
+      eventKey: `turn:${input.turnId}:healing_turn_completed`,
+      metadata: {
+        ...refs,
+        segmentId: result.nextGuidanceState.healing.segmentId,
+        status: result.healingBrief.status,
+        goal: result.healingBrief.goal,
+        depth: result.healingBrief.depth,
+        rupture: result.healingBrief.rupture,
+        realityPressure: result.healingBrief.realityPressure,
+        responseSource: result.responseSource === "static_safety" ? "local_fallback" : result.responseSource,
+        primaryStrategy: result.plan.primaryStrategy,
+      },
+    });
+    if (result.healingBrief.status === "repairing" && result.healingBrief.rupture !== "none") {
+      events.push({
+        eventName: "healing_rupture_repaired",
+        eventKey: `turn:${input.turnId}:healing_rupture_repaired`,
+        metadata: { ...refs, segmentId: result.nextGuidanceState.healing.segmentId, rupture: result.healingBrief.rupture, strategyChanged: true },
+      });
+    }
+  }
   return events;
 }

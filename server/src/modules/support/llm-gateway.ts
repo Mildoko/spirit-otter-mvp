@@ -1,9 +1,9 @@
 import OpenAI from "openai";
 import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
-import type { MemoryCandidate, MemoryRelationCandidateV1, PromptMemory, ProviderCapabilities, RawSignals } from "@otter/shared";
+import type { HealingBriefV1, MemoryCandidate, MemoryRelationCandidateV1, PromptMemory, ProviderCapabilities, RawSignals } from "@otter/shared";
 import type { AppEnv } from "../../config/env.js";
 import { memoryExtractionSchema } from "../memory/schemas.js";
-import { generatedReplySchema, rawSignalsSchema, rawSignalsWithEmotionSchema } from "./schemas.js";
+import { generatedReplySchema, healingCritiqueSchema, rawSignalsSchema, rawSignalsWithEmotionSchema } from "./schemas.js";
 
 export interface LlmMetrics {
   provider: string;
@@ -25,8 +25,18 @@ export interface MemoryExtraction {
   metrics: LlmMetrics;
 }
 
+export interface HealingCritique {
+  groundedInsight: boolean;
+  addsValueBeyondParaphrase: boolean;
+  ruptureRepaired: boolean;
+  avoidsEmptyReassurance: boolean;
+  avoidsForcedPositiveMeaning: boolean;
+  evidence: string[];
+  metrics: LlmMetrics;
+}
+
 export type LlmFailureReason = "timeout" | "empty_response" | "invalid_json" | "schema_error" | "provider_error";
-export type LlmOperation = "analyze" | "generate" | "repair" | "extract_memories";
+export type LlmOperation = "analyze" | "generate" | "repair" | "critique_healing" | "extract_memories";
 export interface LlmFailureDiagnostic {
   reason: LlmFailureReason;
   detail: string | null;
@@ -76,6 +86,21 @@ const repairInstructions: Record<string, string> = {
   ASTROLOGY_SKILL_AFTER_OPTOUT: "立即停止星座话题并尊重用户退出，不换一种说法继续。",
   ASTROLOGY_INVALID_DATE_FABRICATION: "明确指出用户给出的公历日期无效、没有对应星座；禁止把无效日期归到任何星座，也不要编造玩梗答案。",
   SKILL_OVERRIDES_CORE_POLICY: "删除 Topic Skill 产生的行动、切换或回访内容；Skill 无权覆盖核心计划。",
+  TOPIC_NOT_OPENED: "不要把选择权退回用户；使用 Prompt 指定的话题卡，立刻给出具体话题和鹿禅自己的一点内容。",
+  TOPIC_ANCHOR_MISSING: "回到 Prompt 指定的话题，保留至少一个固定锚点；禁止另选话题。",
+  TOPIC_EMOTIONIZATION: "删除对无聊原因、心理需要或人格的分析，直接继续指定的轻松话题。",
+  TOPIC_MULTIPLE_QUESTIONS: "只保留一个自然问题；如果本轮问题预算为零，删除所有疑问句。",
+  TOPIC_ACTION_LEAK: "删除行动、步骤、整理邀请和 actionDraft；主动带聊只贡献内容并继续轻松话题。",
+  PARAPHRASE_ONLY: "不要换词复述用户。保留一个具体事实，并贡献一个由原文支撑、可被否认的新理解或现实入口。",
+  EMPTY_COMPANIONSHIP: "删除‘至少有人听、你不是一个人、我会陪着你’式空泛陪伴，改为回应具体事实、代价和用户真正缺少的现实支持。",
+  UNSUPPORTED_POSITIVE_REFRAME: "删除把倾诉解释为出口、成长、勇敢或进步的积极意义，只按用户原文承认现实重量。",
+  UNSUPPORTED_DEEP_INSIGHT: "删除没有当前原文证据的心理解释，只保留 Prompt 指定且有逐字证据的一个暂定洞察。",
+  MULTIPLE_CORE_INTERPRETATIONS: "只保留一个主要理解，删除第二套原因、隐藏动机、人格或童年解释。",
+  MISSED_RUPTURE_REPAIR: "第一句具体承认刚才哪里说空、说轻或理解错，再重新锚定事实并更换回应方式；不辩解。",
+  MISSED_MATERIAL_STAKES: "明确回应工资、生活费、住房或其他基本生活威胁，以及用户承担的现实责任。",
+  HEALING_MOVEMENT_MISSING: "在具体承接之外增加一点新理解、减轻自责的视角或低压力现实选择，但不要强行积极化。",
+  PREMATURE_SOLUTION: "删除未经授权的解决步骤；先完成具体看见，再只保留一次可拒绝的现实入口。",
+  THERAPY_OR_DIAGNOSIS_CLAIM: "删除治疗、治愈保证、疗效、诊断或治疗师身份声明，诚实保持 AI 支持边界。",
 };
 
 export class LlmGateway {
@@ -162,6 +187,19 @@ export class LlmGateway {
     if (!this.client) return null;
     const result = await this.callJsonWithRetry(prompt.system, prompt.user, generatedReplySchema, 1000);
     this.recordOutcome("generate", result);
+    return result.ok ? { ...result.data, metrics: result.metrics } : null;
+  }
+
+  async critiqueHealing(input: { userText: string; reply: string; brief: HealingBriefV1 }): Promise<HealingCritique | null> {
+    if (!this.client || input.brief.status === "inactive") return null;
+    const system = [
+      "你是独立的疗愈回应约束检查器，不判断用户是否真的被治愈，也不做诊断。",
+      "只检查候选回复：主要洞察是否由当前用户原文支撑；是否提供了超越换词复述的新理解；若计划为 repairing 是否具体承认失配；是否避免空泛陪伴和强行积极化。",
+      "不要因为文字温柔就判定通过。只输出 JSON：",
+      '{"groundedInsight":true,"addsValueBeyondParaphrase":true,"ruptureRepaired":true,"avoidsEmptyReassurance":true,"avoidsForcedPositiveMeaning":true,"evidence":[]}',
+    ].join("\n");
+    const result = await this.callJsonWithRetry(system, JSON.stringify(input), healingCritiqueSchema, 500, 1);
+    this.recordOutcome("critique_healing", result);
     return result.ok ? { ...result.data, metrics: result.metrics } : null;
   }
 

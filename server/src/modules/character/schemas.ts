@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { coreSoulCard, spiritCards } from "./cards.js";
 import { RESPONSE_STYLE_VERSION, responseStyleProfileSchema, spiritStyleDefaults } from "./response-style.js";
+import { validatePublicAgentRegistry } from "./public-agent-registry.js";
 
 export const activeSpiritSchema = z.enum(["deep_tide", "shore_pick"]);
 export const transitionStyleSchema = z.enum(["steady", "blend_to_deep", "blend_to_shore"]);
@@ -18,6 +19,7 @@ const characterCardSchema = z.object({
 });
 
 export function validateCharacterRegistry(): void {
+  validatePublicAgentRegistry();
   characterCardSchema.parse(coreSoulCard);
   characterCardSchema.parse(spiritCards.deep_tide);
   characterCardSchema.parse(spiritCards.shore_pick);

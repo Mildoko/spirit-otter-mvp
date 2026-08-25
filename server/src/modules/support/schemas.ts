@@ -56,6 +56,15 @@ export const generatedReplySchema = z.object({
   actionDraft: z.string().min(1).max(60).nullable(),
 });
 
+export const healingCritiqueSchema = z.object({
+  groundedInsight: z.boolean(),
+  addsValueBeyondParaphrase: z.boolean(),
+  ruptureRepaired: z.boolean(),
+  avoidsEmptyReassurance: z.boolean(),
+  avoidsForcedPositiveMeaning: z.boolean(),
+  evidence: z.array(z.string().max(120)).max(5),
+}).strict();
+
 export const emotionStateSchema = z.object({
   valence: z.number().min(-1).max(1),
   arousal: z.number().min(0).max(1),

@@ -45,6 +45,15 @@ async function installAudioStubs(page: Page) {
   });
 }
 
+async function sendAndReadAssistantReply(page: Page, text: string): Promise<string> {
+  const replies = page.locator(".message-assistant:not(.thinking)");
+  const previousCount = await replies.count();
+  await page.locator(".composer textarea").fill(text);
+  await page.getByRole("button", { name: "发送消息" }).click();
+  await expect(replies).toHaveCount(previousCount + 1);
+  return replies.last().innerText();
+}
+
 test("演示模式完成深汐、自动混合、拾岸、行动和安全退场", async ({ page }) => {
   await page.request.delete("/api/me/data");
   await page.goto("/");
@@ -60,7 +69,8 @@ test("演示模式完成深汐、自动混合、拾岸、行动和安全退场",
 
   await page.locator(".composer textarea").fill("请帮我整理手上的任务。");
   await page.getByRole("button", { name: "发送消息" }).click();
-  await expect(page.getByText(/角色路由：shore_pick/)).toBeVisible();
+  await expect(page.locator(".message-assistant").last()).toBeVisible();
+  await expect(page.getByText(/角色路由：shore_pick/)).toHaveCount(0);
   await expect(page.getByText("帮我整理", { exact: true })).toHaveCount(0);
   const secondOpening = ((await page.locator(".message-assistant").last().innerText()).split(/[，。！？]/u)[0] ?? "").trim();
   expect(secondOpening).not.toBe(firstOpening);
@@ -81,11 +91,32 @@ test("演示模式完成深汐、自动混合、拾岸、行动和安全退场",
   await expect(page.locator(".emotion-diagnostics")).toHaveCount(0);
 });
 
+test("tata 主动开题、换题并在刷新后保持带聊状态", async ({ page }) => {
+  await page.request.delete("/api/me/data");
+  await page.goto("/");
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  const firstReply = await sendAndReadAssistantReply(page, "我好无聊，你来开个话题");
+  expect(firstReply).not.toMatch(/为什么.{0,6}无聊|无聊背后/u);
+  await expect(page.locator(".composer textarea")).toHaveAttribute("placeholder", "接着聊，或者直接说“换一个”…");
+  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toHaveCount(0);
+
+  const secondReply = await sendAndReadAssistantReply(page, "换一个");
+  expect(secondReply).not.toBe(firstReply);
+  expect(secondReply).not.toContain("无聊");
+
+  await page.reload();
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  const thirdReply = await sendAndReadAssistantReply(page, "换一个");
+  expect(thirdReply).not.toBe(secondReply);
+  expect(thirdReply).not.toContain("无聊");
+});
+
 test("准入按钮直接解锁默认全开的声音设置", async ({ page }) => {
   await installAudioStubs(page);
   let redeemed = false;
   const bootstrap = {
     researchId: "DEMO-LOCAL", researchContact: "邀请人", aiReminder: "你正在与 AI 系统互动。",
+    experiencePreferences: { deepInterpretationEnabled: true },
     conversation: { id: "demo-conversation" }, messages: [], actions: [], followups: [],
     visit: { visitId: "visit-sound", currentVisitAt: new Date().toISOString(), isReturning: false },
   };
@@ -107,35 +138,85 @@ test("准入按钮直接解锁默认全开的声音设置", async ({ page }) => 
   }
 });
 
-test("情绪推测可纠正并在同一浏览器刷新后恢复", async ({ page }) => {
+test("主体验不再展示逐轮情绪猜测或弱打标控件", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
   await page.locator(".composer textarea").fill("我很生气。");
   await page.getByRole("button", { name: "发送消息" }).click();
-  const interpretation = page.getByRole("region", { name: "tata 的情绪推测" });
-  await expect(interpretation).toContainText("愤怒");
-  await expect(page.getByRole("region", { name: "与 tata 的对话" }).getByRole("region", { name: "tata 的情绪推测" })).toHaveCount(0);
-  const box = await interpretation.boundingBox();
-  const brandBox = await page.locator(".brand").boundingBox();
-  expect(box).not.toBeNull();
-  expect(brandBox).not.toBeNull();
-  expect(Math.abs(box!.x - brandBox!.x)).toBeLessThan(3);
-  expect(box!.y).toBeGreaterThan(brandBox!.y);
-  const surface = await interpretation.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow };
-  });
-  expect(surface).toEqual({ background: "rgba(0, 0, 0, 0)", border: "0px", shadow: "none" });
-  const correctionButton = interpretation.getByRole("button", { name: "不准确" });
-  expect(await correctionButton.evaluate((element) => getComputedStyle(element).borderTopWidth)).not.toBe("0px");
-  await page.getByRole("button", { name: "不准确" }).click();
-  await page.getByRole("button", { name: "失望" }).click();
-  await page.getByRole("button", { name: "采用这些词" }).click();
-  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toContainText("已按你的纠正");
-  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toContainText("失望");
+  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "准确" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "不准确" })).toHaveCount(0);
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await expect(page.getByRole("checkbox", { name: "显示情绪变化与 tata 的理解" })).toHaveCount(0);
+});
+
+test("用户可关闭主动深入并在结束聊天时选择提交或跳过疗愈反馈", async ({ page }) => {
+  await page.request.delete("/api/me/data");
+  await page.goto("/");
+  await page.getByRole("button", { name: "打开设置" }).click();
+  const deepToggle = page.getByRole("checkbox", { name: "允许 tata 主动提出深入理解" });
+  await expect(deepToggle).toBeChecked();
+  await deepToggle.uncheck();
+  await page.getByRole("button", { name: "关闭设置" }).click();
   await page.reload();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await expect(page.getByRole("checkbox", { name: "允许 tata 主动提出深入理解" })).not.toBeChecked();
+  await page.getByRole("button", { name: "关闭设置" }).click();
   await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
-  await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toContainText("失望");
+  await page.locator(".composer textarea").fill("最近工作很难，我想先说一说");
+  await page.getByRole("button", { name: "发送消息" }).click();
+  await page.getByRole("button", { name: "结束本次聊天" }).click();
+  let endDialog = page.getByRole("dialog", { name: "这次聊天对你有帮助吗？" });
+  await endDialog.getByRole("button", { name: "继续聊天" }).click();
+  await expect(endDialog).toHaveCount(0);
+  await expect(page.locator(".composer textarea")).toBeVisible();
+  await page.getByRole("button", { name: "结束本次聊天" }).click();
+  endDialog = page.getByRole("dialog", { name: "这次聊天对你有帮助吗？" });
+  await endDialog.getByRole("button", { name: "有帮助" }).click();
+  await endDialog.getByRole("button", { name: "说到一部分" }).click();
+  await endDialog.getByRole("button", { name: "更清楚" }).click();
+  await endDialog.getByRole("button", { name: "提交并结束" }).click();
+  await expect(page.locator(".operation-notice")).toContainText("本次聊天已结束");
+  await page.locator(".composer textarea").fill("我还想再补充一句");
+  await page.getByRole("button", { name: "发送消息" }).click();
+  await page.getByRole("button", { name: "结束本次聊天" }).click();
+  await page.getByRole("dialog", { name: "这次聊天对你有帮助吗？" }).getByRole("button", { name: "跳过反馈并结束" }).click();
+  await expect(page.locator(".operation-notice")).toContainText("本次聊天已结束");
+});
+
+test("点踩可直接结束并自愿补充失败原因", async ({ page }) => {
+  await page.request.delete("/api/me/data");
+  await page.goto("/");
+  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await page.locator(".composer textarea").fill("我不知道该说什么");
+  await page.getByRole("button", { name: "发送消息" }).click();
+  await page.getByRole("button", { name: "结束本次聊天" }).click();
+  const dialog = page.getByRole("dialog", { name: "这次聊天对你有帮助吗？" });
+  await dialog.getByRole("button", { name: "没帮到" }).click();
+  await expect(dialog.getByRole("button", { name: "一直重复" })).toBeVisible();
+  await dialog.getByRole("button", { name: "一直重复" }).click();
+  let failedOnce = false;
+  await page.route("**/api/conversations/*/end", async (route) => {
+    if (!failedOnce) {
+      failedOnce = true;
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "TEMPORARY_FAILURE", message: "暂时提交失败" } }) });
+      return;
+    }
+    await route.continue();
+  });
+  await dialog.getByRole("button", { name: "提交并结束" }).click();
+  await expect(page.getByRole("alert")).toContainText("暂时提交失败");
+  await expect(dialog.getByRole("button", { name: "没帮到" })).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByRole("button", { name: "一直重复" })).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByRole("button", { name: "提交并结束" }).click();
+  await expect(page.locator(".operation-notice")).toContainText("本次聊天已结束");
+  const exported = await page.evaluate(async () => {
+    const sessionId = window.localStorage.getItem("otter-demo-session") ?? "";
+    return fetch("/api/me/export", { headers: { "X-Otter-Demo-Session": sessionId } }).then((response) => response.json());
+  });
+  expect(exported.conversationFeedbackRecords).toEqual(expect.arrayContaining([
+    expect.objectContaining({ feedbackSchemaVersion: 2, verdict: "not_helpful", reason: "repetitive" }),
+  ]));
 });
 
 test("场景可切换星空、收起对话并恢复", async ({ page }) => {

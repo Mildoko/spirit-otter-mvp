@@ -5,7 +5,7 @@ const portraitMobileQuery = "(max-width: 960px) and (orientation: portrait)";
 export function LandscapePrompt() {
   const [portraitMobile, setPortraitMobile] = useState(() => window.matchMedia(portraitMobileQuery).matches);
   const [dismissed, setDismissed] = useState(false);
-  const [notice, setNotice] = useState("横屏能完整看到 tata 的水面场景");
+  const [notice, setNotice] = useState("横屏能完整看到鹿禅的水面场景");
 
   useEffect(() => {
     const query = window.matchMedia(portraitMobileQuery);

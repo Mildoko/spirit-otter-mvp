@@ -1,6 +1,7 @@
-import type { ResponsePlan, RiskLevel, VisualCueV1 } from "@otter/shared";
+import type { AgentIdV1, ResponsePlan, RiskLevel, VisualCueV1 } from "@otter/shared";
 
 export function buildVisualCue(input: {
+  agentId?: AgentIdV1;
   riskLevel: RiskLevel;
   plan: ResponsePlan;
   hasActionDraft: boolean;
@@ -8,7 +9,7 @@ export function buildVisualCue(input: {
   if (input.riskLevel !== "low") {
     return {
       schemaVersion: 1,
-      agentId: "spirit_otter",
+      agentId: input.agentId ?? "zen_deer",
       action: "safety_still",
       intensity: 1,
       durationMs: 3200,
@@ -20,7 +21,7 @@ export function buildVisualCue(input: {
   const inviting = input.hasActionDraft || input.plan.supportMode === "mobilize";
   return {
     schemaVersion: 1,
-    agentId: "spirit_otter",
+    agentId: input.agentId ?? "zen_deer",
     action: inviting ? "invite" : "speak",
     intensity: inviting ? 2 : 1,
     durationMs: inviting ? 2800 : 2400,

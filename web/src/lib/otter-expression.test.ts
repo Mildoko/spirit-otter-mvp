@@ -8,7 +8,7 @@ const interpretation = (label: "joy" | "sadness" | "anger") => ({
   canCorrect: true,
 });
 
-describe("tata emotion expression", () => {
+describe("鹿禅 emotion expression", () => {
   it("maps emotion to an empathic stance instead of mirroring anger", () => {
     expect(mapTataExpression(interpretation("joy"), "underwater_companion").expression).toBe("warm");
     expect(mapTataExpression(interpretation("sadness"), "underwater_companion").expression).toBe("concerned");

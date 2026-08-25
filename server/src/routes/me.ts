@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AppEnv } from "../config/env.js";
 import { SESSION_COOKIE } from "../config/constants.js";
 import { requireAuth } from "../services/session-service.js";
 import { z } from "zod";
 import { decideMemory, decideRelation, deleteMemory, deleteRelation, listMemories } from "../modules/memory/management.js";
+import { parseGuidanceState } from "../modules/support/guidance-state.js";
 
 const memoryStatusSchema = z.enum(["active", "disabled", "rejected", "superseded", "expired", "deleted"]);
 const memoryDecisionSchema = z.discriminatedUnion("action", [
@@ -12,8 +13,24 @@ const memoryDecisionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("correct"), content: z.string().trim().min(3).max(240), structuredValue: z.string().trim().max(160).optional() }).strict(),
 ]);
 const relationDecisionSchema = z.object({ action: z.enum(["confirm", "disable", "enable", "reject"]) }).strict();
+const experiencePreferencesSchema = z.object({ deepInterpretationEnabled: z.boolean() }).strict();
 
 export function registerMeRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
+  app.patch("/api/me/experience-preferences", async (request) => {
+    const auth = await requireAuth(request, db, env);
+    const preferences = experiencePreferencesSchema.parse(request.body);
+    const conversations = await db.conversation.findMany({ where: { userId: auth.userId }, select: { id: true, guidanceStateJson: true } });
+    await db.$transaction([
+      db.anonymousUser.update({ where: { id: auth.userId }, data: { deepInterpretationEnabled: preferences.deepInterpretationEnabled } }),
+      ...conversations.map((conversation) => {
+        const guidance = parseGuidanceState(conversation.guidanceStateJson);
+        guidance.healing.deepAnalysisEnabled = preferences.deepInterpretationEnabled;
+        return db.conversation.update({ where: { id: conversation.id }, data: { guidanceStateJson: JSON.parse(JSON.stringify(guidance)) as Prisma.InputJsonValue } });
+      }),
+    ]);
+    return preferences;
+  });
+
   app.get("/api/me/memories", async (request) => {
     const auth = await requireAuth(request, db, env);
     const query = z.object({ status: memoryStatusSchema.optional(), cursor: z.string().optional(), limit: z.coerce.number().int().min(1).max(50).default(30) }).parse(request.query);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { VisualActionV1 } from "@otter/shared";
 import ripplesUrl from "../assets/scene-world-v1/layer-ripples-v1.png";
-import fallbackUrl from "../assets/scene-world-v1/source-concept.png";
+import fallbackUrl from "../assets/scene-world-v1/source-concept-v2-zen-deer.png";
 import type { TataExpressionCueV1 } from "../lib/otter-expression";
 
 export type WorldView = "horizon" | "sky";
@@ -13,7 +13,7 @@ interface SceneWorldProps {
   action: VisualActionV1;
   view: WorldView;
   onViewChange: (view: WorldView) => void;
-  onOtterActivate: () => void;
+  onSpiritActivate: () => void;
   onRendererState?: (state: RendererState) => void;
   showDiagnostics?: boolean;
   expressionCue: TataExpressionCueV1;
@@ -41,11 +41,11 @@ function chooseQuality(reducedMotion: boolean): SceneQuality {
   return "high";
 }
 
-export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRendererState, showDiagnostics = false, expressionCue, welcomeText, welcomeTimeLabel, dialogOpen = false }: SceneWorldProps) {
+export function SceneWorld({ action, view, onViewChange, onSpiritActivate, onRendererState, showDiagnostics = false, expressionCue, welcomeText, welcomeTimeLabel, dialogOpen = false }: SceneWorldProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef(action);
   const viewRef = useRef(view);
-  const activateRef = useRef(onOtterActivate);
+  const activateRef = useRef(onSpiritActivate);
   const rendererCallbackRef = useRef(onRendererState);
   const [rendererState, setRendererState] = useState<RendererState>("loading");
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -54,7 +54,7 @@ export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRend
 
   useEffect(() => { actionRef.current = action; }, [action]);
   useEffect(() => { viewRef.current = view; }, [view]);
-  useEffect(() => { activateRef.current = onOtterActivate; }, [onOtterActivate]);
+  useEffect(() => { activateRef.current = onSpiritActivate; }, [onSpiritActivate]);
   useEffect(() => { rendererCallbackRef.current = onRendererState; }, [onRendererState]);
 
   useEffect(() => {
@@ -119,10 +119,10 @@ export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRend
         const ripples = fullFrame(rippleTexture);
         ripples.blendMode = "add";
         ripples.alpha = quality === "low" ? 0.12 : 0.24;
-        const otterAura = new Graphics().ellipse(0, 0, 150, 86).stroke({ color: 0xbfffee, width: 2, alpha: 0.5 });
-        otterAura.position.set(1010, 690);
-        otterAura.blendMode = "add";
-        world.addChild(background, ripples, otterAura);
+        const spiritAura = new Graphics().ellipse(0, 0, 118, 156).stroke({ color: 0xffe8b0, width: 1, alpha: 0.2 });
+        spiritAura.position.set(505, 438);
+        spiritAura.blendMode = "add";
+        world.addChild(background, ripples, spiritAura);
 
         const starCount = quality === "high" ? 70 : quality === "balanced" ? 36 : 16;
         for (let index = 0; index < starCount; index += 1) {
@@ -131,11 +131,11 @@ export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRend
         }
         skyGlow.alpha = 0;
 
-        const otterHit = new Graphics().ellipse(1010, 690, 145, 92).fill({ color: 0xffffff, alpha: 0.001 });
-        otterHit.eventMode = "static";
-        otterHit.cursor = "pointer";
-        otterHit.on("pointertap", () => activateRef.current());
-        world.addChild(otterHit);
+        const spiritHit = new Graphics().ellipse(505, 438, 150, 190).fill({ color: 0xffffff, alpha: 0.001 });
+        spiritHit.eventMode = "static";
+        spiritHit.cursor = "pointer";
+        spiritHit.on("pointertap", () => activateRef.current());
+        world.addChild(spiritHit);
 
         const fitWorld = () => {
           if (!app) return;
@@ -181,8 +181,8 @@ export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRend
           const speed = currentAction === "think" ? 0.0014 : currentAction === "speak" ? 0.0022 : 0.0008;
           const amplitude = still ? 0 : currentAction === "invite" ? 7 : currentAction === "approach" ? 5 : 2.5;
           const pulse = Math.sin(elapsed * speed) * amplitude;
-          otterAura.scale.set(1 + pulse * 0.006);
-          otterAura.alpha = currentAction === "safety_still" ? 0 : currentAction === "notice" ? 0.9 : currentAction === "invite" ? 0.72 : 0.34;
+          spiritAura.scale.set(1 + pulse * 0.004);
+          spiritAura.alpha = currentAction === "safety_still" ? 0 : currentAction === "notice" ? 0.56 : currentAction === "invite" ? 0.42 : 0.16;
           const rippleTarget = currentAction === "safety_still" ? 0 : currentAction === "invite" || currentAction === "speak" ? 0.4 : quality === "low" ? 0.1 : 0.2;
           ripples.alpha += (rippleTarget - ripples.alpha) * 0.05;
         });
@@ -211,10 +211,10 @@ export function SceneWorld({ action, view, onViewChange, onOtterActivate, onRend
 
   return <section className={`scene-world quality-${quality} view-${view}`} aria-label="灵体水面世界">
     <div ref={hostRef} className="scene-world-host" aria-hidden="true" />
-    {(rendererState === "fallback" || rendererState === "context_lost") && <img className="scene-world-fallback" src={fallbackUrl} alt="星空下的小船、tata 与灵体水面" />}
-    {!dialogOpen && <button className="scene-otter-access" onFocus={() => { if (action === "idle") activateRef.current = onOtterActivate; }} onClick={onOtterActivate} aria-label="靠近 tata 并打开对话">与 tata 说话</button>}
+    {(rendererState === "fallback" || rendererState === "context_lost") && <img className="scene-world-fallback" src={fallbackUrl} alt="星空下安坐船尾的鹿灵鹿禅与灵体水面" />}
+    {!dialogOpen && <button className="scene-spirit-access" onFocus={() => { if (action === "idle") activateRef.current = onSpiritActivate; }} onClick={onSpiritActivate} aria-label="靠近鹿灵鹿禅并打开对话">与鹿禅说话</button>}
     <div className={`tata-expression tata-expression-${expressionCue.expression}`} role="img" aria-label={expressionCue.label}><span aria-hidden="true">{expressionCue.symbol}</span></div>
-    {welcomeText && <aside className="tata-welcome-bubble" role="status"><strong>tata</strong><p>{welcomeText}</p>{welcomeTimeLabel && <small>{welcomeTimeLabel}</small>}</aside>}
+    {welcomeText && <aside className="tata-welcome-bubble" role="status"><strong>鹿禅</strong><p>{welcomeText}</p>{welcomeTimeLabel && <small>{welcomeTimeLabel}</small>}</aside>}
     <button className="scene-view-toggle" onClick={() => onViewChange(view === "horizon" ? "sky" : "horizon")} disabled={rendererState === "loading"}>
       {view === "horizon" ? "仰望星空" : "返回水面"}
     </button>

@@ -1,7 +1,7 @@
 import type { ActiveSpirit, RiskLevel } from "@otter/shared";
 import { z } from "zod";
 
-export const CORE_DIALOGUE_EVENT_VERSION = "event-v2" as const;
+export const CORE_DIALOGUE_EVENT_VERSION = "event-v4" as const;
 export const coreDialogueMinimumEventNames = [
   "session_started",
   "user_turn_submitted",
@@ -16,6 +16,7 @@ export const coreDialogueMinimumEventNames = [
   "followup_reentered",
   "followup_state_labeled",
   "safety_plain_triggered",
+  "healing_turn_completed",
 ] as const;
 
 const opaqueId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u);
@@ -47,8 +48,8 @@ export const coreDialogueEventSchemas = {
   support_turn_completed: z.object({
     ...turnFields,
     riskLevel,
-    supportMode: z.enum(["stabilize", "validate", "clarify", "mobilize"]),
-    sceneState: z.enum(["underwater_companion", "quiet_water", "near_surface_transition", "surface_organize"]),
+    supportMode: z.enum(["stabilize", "validate", "clarify", "mobilize", "converse"]),
+    sceneState: z.enum(["underwater_companion", "quiet_water", "near_surface_transition", "surface_organize", "surface_chat"]),
     activeSpirit,
     transitionEligible: z.boolean(),
     assistantReplyLengthBucket: lengthBucket,
@@ -136,6 +137,45 @@ export const coreDialogueEventSchemas = {
     violationCodes: routeReasonCodes,
     responseSource: z.enum(["cloud_model", "local_fallback"]),
   }).strict(),
+  healing_turn_completed: z.object({
+    ...turnFields,
+    segmentId: opaqueId,
+    status: z.enum(["active", "repairing"]),
+    goal: z.enum(["felt_seen", "emotional_softening", "meaning_clarity", "self_compassion", "agency", "reality_bridge"]),
+    depth: z.enum(["recognize", "deepen", "integrate", "bridge"]),
+    rupture: z.enum(["none", "too_abstract", "too_light", "misread", "unwanted_advice", "not_helpful"]),
+    realityPressure: z.enum(["none", "present", "urgent_non_safety"]),
+    responseSource: z.enum(["cloud_model", "local_fallback"]),
+    primaryStrategy: z.string().min(1).max(80),
+  }).strict(),
+  healing_rupture_repaired: z.object({
+    ...turnFields,
+    segmentId: opaqueId,
+    rupture: z.enum(["too_abstract", "too_light", "misread", "unwanted_advice", "not_helpful"]),
+    strategyChanged: z.literal(true),
+  }).strict(),
+  healing_segment_ended: z.object({ ...conversationFields, segmentId: opaqueId, endSource: z.enum(["user_end", "safety_interrupt", "expired", "deleted"]) }).strict(),
+  healing_feedback_requested: z.object({ ...conversationFields, segmentId: opaqueId, source: z.literal("end_chat") }).strict(),
+  healing_feedback_submitted: z.object({
+    ...conversationFields,
+    segmentId: opaqueId,
+    understanding: z.enum(["hit", "partly", "missed"]),
+    movement: z.enum(["more_space", "clearer", "more_choice", "unchanged", "worse"]),
+    reason: z.enum(["too_shallow", "too_analytical", "too_generic", "unwanted_advice", "misread", "other"]).nullable(),
+  }).strict(),
+  healing_feedback_skipped: z.object({ ...conversationFields, segmentId: opaqueId }).strict(),
+  conversation_feedback_requested: z.object({ ...conversationFields, segmentId: opaqueId, source: z.literal("end_chat") }).strict(),
+  conversation_feedback_submitted: z.object({
+    ...conversationFields,
+    segmentId: opaqueId,
+    feedbackSchemaVersion: z.union([z.literal(1), z.literal(2)]),
+    verdict: z.enum(["helpful", "not_helpful"]).nullable(),
+    understanding: z.enum(["hit", "partly", "missed"]).nullable(),
+    movement: z.enum(["more_space", "clearer", "more_choice", "unchanged", "worse"]).nullable(),
+    reason: z.enum(["too_shallow", "repetitive", "too_analytical", "too_generic", "unwanted_advice", "misread", "topic_irrelevant", "topic_not_switched", "other"]).nullable(),
+    source: z.literal("end_chat"),
+  }).strict(),
+  conversation_feedback_skipped: z.object({ ...conversationFields, segmentId: opaqueId, feedbackSchemaVersion: z.union([z.literal(1), z.literal(2)]), source: z.literal("end_chat") }).strict(),
 } as const;
 
 export type CoreDialogueEventName = keyof typeof coreDialogueEventSchemas;

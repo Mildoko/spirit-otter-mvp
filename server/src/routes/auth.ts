@@ -13,6 +13,7 @@ const redeemSchema = z.object({
   aiDisclosureAccepted: z.literal(true),
   cloudProcessingAccepted: z.literal(true),
   dataConsentAccepted: z.literal(true),
+  deepInterpretationAccepted: z.literal(true),
 });
 
 export function registerAuthRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
@@ -38,6 +39,8 @@ export function registerAuthRoutes(app: FastifyInstance, db: PrismaClient, env: 
           aiDisclosureAcceptedAt: now,
           cloudProcessingAcceptedAt: now,
           dataConsentAcceptedAt: now,
+          deepInterpretationAcceptedAt: now,
+          deepInterpretationEnabled: true,
           expiresAt,
         },
       });

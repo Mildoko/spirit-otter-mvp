@@ -1,4 +1,33 @@
 export const ASTROLOGY_KNOWLEDGE_VERSION = "astrology-knowledge-v1.1";
+export const TRADITIONAL_METAPHYSICS_KNOWLEDGE_VERSION = "traditional-metaphysics-knowledge-v1";
+
+export const traditionalMetaphysicsTopic = /(?:八字|四柱|命理|五行|阴阳|天干|地支|十神|日主|大运|流年|纳音|生肖|周易|易经|卦象|风水|紫微斗数|紫微|奇门遁甲|奇门|六爻|梅花易数|择日)/u;
+
+export function traditionalMetaphysicsForPrompt(text: string): string {
+  const shared = `知识版本=${TRADITIONAL_METAPHYSICS_KNOWLEDGE_VERSION}。中国传统术数属于历史文化与象征性解释体系，不是经科学验证的命运预测工具。`;
+  if (/(?:八字|四柱|天干|地支|日主|十神|大运|流年|纳音)/u.test(text)) {
+    return `${shared} 八字又称四柱，以年、月、日、时四柱各配一个天干和地支，共八字；日干常称日主。十神描述其他干支与日主之间的五行生克和阴阳关系，不等于十种固定人格。大运、流年是传统命理里的时间框架。精确排盘涉及历法、节气、时区与出生时刻校正；当前系统没有受验证的排盘引擎，禁止编造四柱、十神、大运或流年。五行多少也不能简化为“缺什么就补什么”。`;
+  }
+  if (/(?:五行|阴阳)/u.test(text)) {
+    return `${shared} 阴阳描述相对、互根和变化，不是善恶二分。五行是木、火、土、金、水五类关系模型，常用相生木火土金水与相克木土水火金的循环来说明变化；不能把某一行简单说成越多越好，也不能据此诊断身心或保证改运。`;
+  }
+  if (/(?:周易|易经|卦象|六爻|梅花易数)/u.test(text)) {
+    return `${shared} 《周易》由卦象、卦爻辞及后世解释传统构成；六十四卦可用于讨论变化、位置与选择，但不能冒充确定预言。当前系统可以解释常见概念和文本背景，不进行可靠起卦或断卦。`;
+  }
+  if (/(?:风水|择日)/u.test(text)) {
+    return `${shared} 风水与择日是围绕空间、方位、时序形成的传统实践。可以介绍概念、历史与常见说法；不能承诺招财、治病、避灾，也不能替代建筑安全、医学、法律或财务判断。`;
+  }
+  return `${shared} 可以解释八字、阴阳五行、《周易》、风水、紫微斗数、奇门遁甲等传统体系的基本概念、流派差异与文化语境；没有可靠排盘或起卦工具时必须明确说没有，禁止现场编造命盘和吉凶。`;
+}
+
+export function traditionalMetaphysicsFallback(text: string): string | null {
+  if (!traditionalMetaphysicsTopic.test(text)) return null;
+  if (/(?:八字|四柱)/u.test(text)) return "八字又叫四柱，以出生的年、月、日、时各成一柱，共八个干支字。它可以作为传统文化的观察框架，但精确排盘要核对历法、节气与时区；我目前没有可靠排盘引擎，不会替你编命盘。";
+  if (/(?:五行|阴阳)/u.test(text)) return "阴阳讲相对与变化，五行讲木、火、土、金、水之间的生克关系。它更像一张古人的关系地图，不是“缺什么就补什么”的算术题。";
+  if (/(?:周易|易经|卦象|六爻|梅花易数)/u.test(text)) return "《周易》谈的是变化、位置与应对，六十四卦像六十四种处境的观察框架。可以借它照见选择，却不该把卦象当成不可更改的判决。";
+  if (/(?:风水|择日)/u.test(text)) return "风水与择日是传统的空间和时序观。可以聊它们的文化逻辑，但不能用来保证招财、治病或避灾。";
+  return "可以聊八字、命理、阴阳五行与《周易》。我会把它们放在传统文化和自我观察里谈，不把象数说成命运的铁律。";
+}
 
 export interface ZodiacSignKnowledge {
   id: string;

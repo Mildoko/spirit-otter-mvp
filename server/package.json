@@ -57,6 +57,11 @@
     ,"report:emotion": "node dist/scripts/emotion-evaluation.js && node dist/scripts/emotion-expression-report.js"
     ,"test:memory": "node dist/scripts/memory-evaluation.js"
     ,"test:model:memory": "node dist/scripts/memory-evaluation.js --model"
+    ,"test:healing": "vitest run tests/unit/healing-engine.test.ts tests/unit/healing-routes.test.ts"
+    ,"pretest:eval:healing": "npm run build"
+    ,"test:eval:healing": "node dist/scripts/healing-eval.js"
+    ,"prereview:healing": "npm run build"
+    ,"review:healing": "node dist/scripts/healing-blind-review.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

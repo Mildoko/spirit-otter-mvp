@@ -49,9 +49,12 @@
     ,"report:emotion": "npm run build -w @otter/shared && npm run build -w @otter/server && node server/dist/scripts/emotion-evaluation.js && node server/dist/scripts/emotion-expression-report.js"
     ,"test:memory": "npm run build -w @otter/shared && npm run build -w @otter/server && npm run test:memory -w @otter/server"
     ,"test:model:memory": "npm run build -w @otter/shared && npm run build -w @otter/server && npm run test:model:memory -w @otter/server"
+    ,"test:healing": "npm run test:healing -w @otter/server"
+    ,"test:eval:healing": "npm run test:eval:healing -w @otter/server"
+    ,"review:healing": "npm run review:healing -w @otter/server"
     ,"test:e2e:demo": "node scripts/run-demo-e2e.mjs"
     ,"test:e2e:full": "node scripts/run-full-e2e.mjs"
-    ,"prepackage:testable": "npm run typecheck && npm test && npm run test:eval:core && npm run test:eval:skill:astrology && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
+    ,"prepackage:testable": "npm run typecheck && npm test && npm run test:healing && npm run test:eval:core && npm run test:eval:healing && npm run test:eval:skill:astrology && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
     ,"package:testable": "node scripts/package-testable.mjs"
   },
   "devDependencies": {

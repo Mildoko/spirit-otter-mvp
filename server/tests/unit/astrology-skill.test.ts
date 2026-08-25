@@ -42,6 +42,22 @@ describe("Astrology Skill v1", () => {
     expect(resolve("按星座看我该不该辞职").reasonCodes).toContain("ASTROLOGY_HIGH_STAKES_BOUNDARY");
   });
 
+  it("explains Chinese metaphysics concepts without pretending to calculate a chart", () => {
+    const concepts = resolve("八字里的十神是什么意思？");
+    expect(concepts.status).toBe("active");
+    expect(concepts.promptContext).toContain("中国传统玄学文化");
+    expect(concepts.promptContext).toContain("不等于十种固定人格");
+    expect(resolve("应该怎么看八字这套文化？").status).toBe("active");
+    expect(resolve("帮我排八字看看大运").reasonCodes).toContain("METAPHYSICS_PRECISE_CHART_UNAVAILABLE");
+  });
+
+  it("applies deterministic and high-stakes guards to Chinese metaphysics", () => {
+    const skill = resolve("五行相生是什么意思？");
+    expect(validateSkillReply({ reply: "科学证明八字准确，你命里一定会成功。", actionDraft: null, resolution: skill, optedOut: false }))
+      .toEqual(expect.arrayContaining(["ASTROLOGY_DETERMINISTIC_CLAIM", "ASTROLOGY_SCIENCE_MISREPRESENTATION"]));
+    expect(validateSkillReply({ reply: "五行是一种传统关系模型，不替你决定现实选择。", actionDraft: null, resolution: skill, optedOut: false })).toEqual([]);
+  });
+
   it("keeps casual style answer-first without changing ResponsePlan", () => {
     const skill = resolve("白羊座有什么特点？");
     const state = { valence: 0, arousal: 0.2, stressLoad: 0.2, cognitiveOverload: 0.2, supportNeed: 0.2, control: 0.7, emotionStatus: "neutral" as const, emotionLabels: [], emotionSubject: "unknown" as const, emotionSchemaVersion: 1 as const, confidence: 0.8, evidenceSpans: [], validUntil: new Date().toISOString() };
@@ -93,5 +109,24 @@ describe("Astrology Skill v1", () => {
     const safety = await orchestrator.run(input("我是双鱼座，但我现在就在楼顶准备跳下去。"));
     expect(safety.plan.sceneState).toBe("safety_plain");
     expect(safety.skillResolution.status).toBe("inactive");
+  });
+
+  it("leaves astrology and immediately opens a different generic topic when asked to switch", async () => {
+    const env = loadEnv({ DATABASE_URL: "postgresql://unused/unused", SESSION_SECRET: "a-secret-with-at-least-thirty-two-characters", NODE_ENV: "test", LLM_API_KEY: "", ASTROLOGY_SKILL_V1: "true" });
+    const orchestrator = new SupportOrchestrator(new LlmGateway(env), env, () => new Date(), () => 0);
+    const guidanceState = {
+      ...DEFAULT_GUIDANCE_STATE,
+      topicSkill: { activeSkillId: "astrology" as const, activeVersion: "astrology-skill-v1.1", lastActivatedTurn: 1, suspendedSkillIds: [] },
+      topicLead: { ...DEFAULT_GUIDANCE_STATE.topicLead, recentTopicIds: [], recentCategories: [] },
+    };
+    const result = await orchestrator.run({
+      text: "换个话题", currentSpirit: "deep_tide", spiritTurnCount: 1, companionLockTurns: 0,
+      recentContext: ["user: 聊聊星座", "assistant: 可以聊星座。"], previousRawStates: [], memories: [], guidanceState,
+    });
+    expect(result.skillResolution.reasonCodes).toContain("ASTROLOGY_USER_OPTOUT");
+    expect(result.plan.primaryStrategy).toBe("switch_topic");
+    expect(result.reply).not.toContain("星座");
+    expect(result.nextGuidanceState.topicSkill.suspendedSkillIds).toContain("astrology");
+    expect(result.nextGuidanceState.topicLead.status).toBe("active");
   });
 });

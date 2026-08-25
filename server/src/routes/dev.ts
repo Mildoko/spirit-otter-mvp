@@ -5,7 +5,7 @@ import type { SupportOrchestrator } from "../modules/support/orchestrator.js";
 import { buildPublicEmotionFeedback } from "../modules/support/emotion-feedback.js";
 import { buildPublicEmotionInterpretation } from "../modules/support/emotion-inference.js";
 import { registerLocalWebRoutes } from "./local-web.js";
-import { guidanceStateV1Schema } from "../modules/support/guidance-state.js";
+import { guidanceStateSchema } from "../modules/support/guidance-state.js";
 
 const evaluateSchema = z.object({
   text: z.string().trim().min(1).max(6000),
@@ -13,7 +13,7 @@ const evaluateSchema = z.object({
   spiritTurnCount: z.number().int().min(0).default(0),
   companionLockTurns: z.number().int().min(0).max(2).default(0),
   recentContext: z.array(z.string().max(6000)).max(12).default([]),
-  guidanceState: guidanceStateV1Schema.optional(),
+  guidanceState: guidanceStateSchema.optional(),
 }).strict();
 
 export function registerDevRoutes(app: FastifyInstance, env: AppEnv, orchestrator: Pick<SupportOrchestrator, "run">): void {
@@ -36,11 +36,12 @@ export function registerDevRoutes(app: FastifyInstance, env: AppEnv, orchestrato
       ...(guidanceState ? { guidanceState } : {}),
     });
     const isSafety = result.riskLevel === "high" || result.riskLevel === "imminent";
+    const isCasualTopic = result.plan.sceneState === "surface_chat";
     return {
       ...result,
       ...(isSafety ? {} : {
-        emotionFeedback: buildPublicEmotionFeedback(result.state),
-        ...(env.EMOTION_INFERENCE_V2 && result.riskLevel === "low" ? { emotionInterpretation: buildPublicEmotionInterpretation(result.emotionHypothesis) } : {}),
+        ...(isCasualTopic ? {} : { emotionFeedback: buildPublicEmotionFeedback(result.state) }),
+        ...(env.EMOTION_INFERENCE_V2 && result.riskLevel === "low" && !isCasualTopic ? { emotionInterpretation: buildPublicEmotionInterpretation(result.emotionHypothesis) } : {}),
         characterDiagnostics: {
           activeSpirit: result.plan.activeSpirit,
           transitionStyle: result.plan.transitionStyle,

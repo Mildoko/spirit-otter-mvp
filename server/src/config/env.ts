@@ -46,7 +46,10 @@ const envSchema = z.object({
   APP_TIME_ZONE: z.string().min(1).default("Asia/Shanghai"),
   AZURE_SPEECH_KEY: z.string().default(""),
   AZURE_SPEECH_REGION: z.string().default(""),
-  AZURE_SPEECH_VOICE: z.string().default("zh-CN-XiaoxiaoNeural"),
+  AZURE_SPEECH_VOICE: z.string().default("zh-CN-YunjianNeural"),
+  AZURE_SPEECH_VOICE_LUCHAN: z.string().default(""),
+  AZURE_SPEECH_VOICE_TATA: z.string().default("zh-CN-XiaoxiaoNeural"),
+  AZURE_SPEECH_VOICE_FEIER: z.string().default("zh-CN-XiaoyiNeural"),
   BUILD_VERSION: z.string().min(1).default("auto"),
 });
 

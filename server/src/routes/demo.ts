@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { ChatTurnResponse, EmotionDiagnostics, EmotionState, PublicFollowup } from "@otter/shared";
+import type { AgentIdV1, ChatTurnResponse, EmotionDiagnostics, EmotionState, PublicFollowup } from "@otter/shared";
 import { buildVisualCue } from "../modules/support/visual-cue.js";
 import { buildAudioCue } from "../modules/support/audio-cue.js";
 import { z } from "zod";
@@ -11,10 +11,13 @@ import { buildPublicEmotionFeedback } from "../modules/support/emotion-feedback.
 import { buildPublicEmotionInterpretation } from "../modules/support/emotion-inference.js";
 import { emotionLabelV1Schema } from "../modules/support/schemas.js";
 import { registerLocalWebRoutes } from "./local-web.js";
+import { parseGuidanceState, resetConversationSegmentState } from "../modules/support/guidance-state.js";
+import { feedbackMetadata, healingEndSchema } from "./healing.js";
 
 const turnSchema = z.object({
   conversationId: z.string(),
   text: z.string().trim().min(1).max(6000),
+  agentId: z.enum(["zen_deer", "spirit_otter", "bird_courier"]).optional(),
 }).strict();
 const lanDemoInviteCode = "OTTER-LAN-2026";
 const demoRedeemSchema = z.object({
@@ -23,6 +26,7 @@ const demoRedeemSchema = z.object({
   aiDisclosureAccepted: z.literal(true),
   cloudProcessingAccepted: z.literal(true),
   dataConsentAccepted: z.literal(true),
+  deepInterpretationAccepted: z.literal(true),
 }).strict();
 const correctionSchema = z.object({
   turnId: z.string().uuid(),
@@ -42,6 +46,7 @@ const memoryDecisionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("correct"), content: z.string().trim().min(3).max(240), structuredValue: z.string().trim().max(160).optional() }).strict(),
 ]);
 const relationDecisionSchema = z.object({ action: z.enum(["confirm", "disable", "enable", "reject"]) }).strict();
+const experiencePreferencesSchema = z.object({ deepInterpretationEnabled: z.boolean() }).strict();
 const pickState = (state: EmotionState) => Object.fromEntries(dimensions.map((key) => [key, state[key]])) as Pick<EmotionState, typeof dimensions[number]>;
 
 function codesMatch(actual: string, expected: string): boolean {
@@ -109,25 +114,72 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
       researchId: sessionStore.researchId,
       researchContact: env.RESEARCH_CONTACT,
       aiReminder: "你正在与 AI 系统互动；演示数据不会保存。",
+      experiencePreferences: { deepInterpretationEnabled: sessionStore.deepInterpretationEnabled },
       visit: {
         visitId: randomUUID(),
         currentVisitAt,
         ...(previousVisitAt ? { previousVisitAt } : {}),
         isReturning: Boolean(previousVisitAt),
       },
-      conversation: { id: sessionStore.conversationId },
+      conversation: { id: sessionStore.conversationId, activeAgentId: sessionStore.activeAgentId },
       messages: sessionStore.messages,
       actions: sessionStore.actions.filter((item) => item.status !== "deleted"),
       followups: sessionStore.followups.filter((item) => ["pending", "deferred"].includes(item.status) && new Date(item.dueAt) <= new Date()),
       ...(latestEmotion ? { lastEmotion: { turnId: latestEmotion.turnId, interpretation: buildPublicEmotionInterpretation(latestEmotion.hypothesis) } } : {}),
     };
   });
+  app.patch("/api/me/experience-preferences", async (request) => {
+    const sessionStore = storeFor(request);
+    const preferences = experiencePreferencesSchema.parse(request.body);
+    sessionStore.deepInterpretationEnabled = preferences.deepInterpretationEnabled;
+    const guidance = parseGuidanceState(sessionStore.guidanceState);
+    guidance.healing.deepAnalysisEnabled = preferences.deepInterpretationEnabled;
+    sessionStore.guidanceState = guidance;
+    return preferences;
+  });
+  app.post("/api/conversations/:id/end", async (request, reply) => {
+    const sessionStore = storeFor(request);
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    const body = healingEndSchema.parse(request.body);
+    if (id !== sessionStore.conversationId) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "会话不存在" } });
+    const guidance = parseGuidanceState(sessionStore.guidanceState);
+    const segmentId = "segmentId" in body ? body.segmentId : guidance.healing.segmentId;
+    const metadata = feedbackMetadata(body);
+    const record = {
+      segmentId,
+      feedbackSchemaVersion: ("segmentId" in body ? 2 : 1) as 1 | 2,
+      skipped: body.skipped === true,
+      verdict: metadata?.verdict ?? null,
+      understanding: metadata?.understanding ?? null,
+      movement: metadata?.movement ?? null,
+      reason: metadata?.reason ?? null,
+    };
+    if (segmentId !== guidance.healing.segmentId) {
+      if (!sessionStore.feedbackForSegment(segmentId)) return reply.code(409).send({ error: { code: "STALE_FEEDBACK_SEGMENT", message: "这段聊天已经结束，请重新打开反馈面板" } });
+      try {
+        sessionStore.recordConversationFeedback(record);
+        return { ended: true as const, duplicate: true as const };
+      } catch (reason) {
+        return reply.code(409).send({ error: { code: "STALE_FEEDBACK_SEGMENT", message: reason instanceof Error ? reason.message : "这段聊天已经结束" } });
+      }
+    }
+    const saved = sessionStore.recordConversationFeedback(record);
+    sessionStore.guidanceState = resetConversationSegmentState(guidance, `segment-${randomUUID()}`, sessionStore.deepInterpretationEnabled);
+    return saved.duplicate ? { ended: true as const, duplicate: true as const } : { ended: true as const };
+  });
+  app.post("/api/conversations/:id/healing-feedback-requested", async (request, reply) => {
+    const sessionStore = storeFor(request);
+    const { id } = z.object({ id: z.string() }).parse(request.params);
+    if (id !== sessionStore.conversationId) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "会话不存在" } });
+    return { requested: true as const, segmentId: parseGuidanceState(sessionStore.guidanceState).healing.segmentId };
+  });
   app.post("/api/chat/turn", async (request, reply) => {
     const store = storeFor(request);
     const body = turnSchema.parse(request.body);
     if (body.conversationId !== store.conversationId) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "会话不存在" } });
-    const recentContext = store.messages.slice(-12).map((message) => `${message.role}: ${message.content}`);
-    const userMessage = store.addMessage("user", body.text);
+    const activeAgentId: AgentIdV1 = body.agentId ?? store.activeAgentId;
+    const recentContext = store.messages.slice(-12).map((message) => `${message.role}${message.agentId ? `[${message.agentId}]` : ""}: ${message.content}`);
+    const userMessage = store.addMessage("user", body.text, activeAgentId);
     const previous = store.states.at(-1)?.smoothed;
     const memories = store.recallMemories(body.text, env.MEMORY_V2);
     const actionContext = store.actions.find((item) => ["confirmed", "deferred"].includes(item.status));
@@ -135,6 +187,7 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
     const previousEmotionCorrection = store.getPendingEmotionCorrection();
     const result = await orchestrator.run({
       text: body.text,
+      agentId: activeAgentId,
       currentSpirit: store.activeSpirit,
       spiritTurnCount: store.spiritTurnCount,
       companionLockTurns: store.companionLockTurns,
@@ -150,11 +203,13 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
       ...(previousEmotionCorrection ? { previousEmotionCorrection } : {}),
     });
     const turnId = randomUUID();
-    const assistant = store.addMessage("assistant", result.reply);
+    const assistant = store.addMessage("assistant", result.reply, activeAgentId);
+    store.activeAgentId = activeAgentId;
     store.activeSpirit = result.plan.activeSpirit;
     store.spiritTurnCount = result.nextSpiritTurnCount;
     store.companionLockTurns = result.nextCompanionLockTurns;
     store.guidanceState = result.nextGuidanceState;
+    store.deepInterpretationEnabled = result.nextGuidanceState.healing.deepAnalysisEnabled;
     store.consumePendingEmotionCorrection();
     store.states.push({ raw: result.rawState, smoothed: result.state });
     if (env.EMOTION_INFERENCE_V2) store.recordEmotion(turnId, result.emotionHypothesis, result.riskLevel === "low");
@@ -179,16 +234,17 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
     const response: ChatTurnResponse = {
       turnId,
       reply: assistant,
+      activeAgentId,
       scene: result.plan.sceneState,
       ...(action ? { action } : {}),
       safety: isSafety ? "direct_support" : "normal",
       responseSource: result.responseSource,
-      visualCue: buildVisualCue({ riskLevel: result.riskLevel, plan: result.plan, hasActionDraft: Boolean(result.actionDraft) }),
-      ...(env.AUDIO_V1 ? { audioCue: buildAudioCue({ riskLevel: result.riskLevel, activeSpirit: result.plan.activeSpirit, hasActionDraft: Boolean(result.actionDraft) }) } : {}),
+      visualCue: buildVisualCue({ agentId: activeAgentId, riskLevel: result.riskLevel, plan: result.plan, hasActionDraft: Boolean(result.actionDraft) }),
+      ...(env.AUDIO_V1 ? { audioCue: buildAudioCue({ agentId: activeAgentId, riskLevel: result.riskLevel, activeSpirit: result.plan.activeSpirit, hasActionDraft: Boolean(result.actionDraft) }) } : {}),
       ...(isSafety ? {} : {
-        emotionFeedback: buildPublicEmotionFeedback(result.state, previous),
+        ...(result.plan.sceneState === "surface_chat" ? {} : { emotionFeedback: buildPublicEmotionFeedback(result.state, previous) }),
         emotionDiagnostics: diagnostics,
-        ...(env.EMOTION_INFERENCE_V2 && result.riskLevel === "low" ? { emotionInterpretation: buildPublicEmotionInterpretation(result.emotionHypothesis) } : {}),
+        ...(env.EMOTION_INFERENCE_V2 && result.riskLevel === "low" && result.plan.sceneState !== "surface_chat" ? { emotionInterpretation: buildPublicEmotionInterpretation(result.emotionHypothesis) } : {}),
         characterDiagnostics: {
           activeSpirit: result.plan.activeSpirit,
           transitionStyle: result.plan.transitionStyle,
@@ -259,6 +315,7 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
       followups: store.followups,
       memories: store.exportMemories(),
       emotionRecords: store.exportEmotionRecords(),
+      conversationFeedbackRecords: store.exportConversationFeedbackRecords(),
     };
   });
   app.get("/api/me/memories", async (request) => {

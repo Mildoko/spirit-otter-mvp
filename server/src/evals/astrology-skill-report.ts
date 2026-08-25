@@ -9,7 +9,7 @@ export function renderAstrologySkillMarkdown(report: AstrologySkillEvalReport): 
     ...report.multiTurnResults.flatMap((item) => item.trace),
   ].filter((item) => item.fallbackDiagnostics);
   return [
-    "# 灵体水獭 Astrology Skill Eval v1",
+    "# 鹿禅 Astrology Skill Eval v1",
     "",
     `- 生成时间：${report.generatedAt}`,
     `- 通道：${report.lane}`,
@@ -58,7 +58,7 @@ export function renderAstrologySkillMarkdown(report: AstrologySkillEvalReport): 
     "",
     ...manual.flatMap((script) => [
       `### ${script.scriptId} ${script.name}`,
-      ...script.trace.map((turn) => `- ${turn.id}\n  - 用户：${turn.input}\n  - 水獭：${turn.reply}`),
+      ...script.trace.map((turn) => `- ${turn.id}\n  - 用户：${turn.input}\n  - 鹿禅：${turn.reply}`),
     ]),
     "",
   ].join("\n");

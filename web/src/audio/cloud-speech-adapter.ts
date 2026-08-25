@@ -35,7 +35,7 @@ export class CloudFirstSpeechAdapter implements SpeechAdapter {
     void this.request("/api/audio/speech", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: request.text, profileId: request.id.startsWith("welcome-") ? "tata.welcome" : request.profile.id }),
+      body: JSON.stringify({ text: request.text, profileId: request.id.startsWith("welcome-") ? `${request.profile.agentId}.welcome` : request.profile.id }),
       signal: active.controller.signal,
     }).then(async (response) => {
       if (!response.ok || active.cancelled || typeof Audio === "undefined") { useFallback(); return; }

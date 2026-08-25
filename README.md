@@ -1,6 +1,10 @@
-# 灵体水獭“一体双灵”MVP
+# BoonZoom 多角色陪伴与社区联动原型
 
-面向受控、预约式成年人研究的 Web MVP。用户只面对一个连续角色“澜泊”；系统在同一 Core Soul 下自动选择深汐（承接）或拾岸（整理）灵格，用户无需操作模式。拾岸每轮最多形成一个可编辑、需用户确认的小行动。此项目不是医疗、心理诊断或紧急救援服务，也不得直接用于公网开放注册。
+面向受控、预约式成年人研究的 Web 原型。产品蓝图包含三个独立公开 Agent：鹿禅负责禅宗观照与传统文化，`tata` 负责温馨体贴的日常陪伴，飞儿负责生活秘书、兴趣档案与活动发现。当前可运行界面仍以鹿禅为主，`tata`、飞儿的完整入口以及社区能力尚未开放。
+
+目标世界采用“内圈私密船上世界—中圈熟人连接—外圈公共社区”的三圈结构。旧版“水下/水面/漂浮物”情绪状态体系已经废弃；湖面和船只仅可作为视觉环境，不能替代清楚的权限、隐私和状态说明。完整设计见 `docs/three-circle-world-and-community-linkage-v1.md`。
+
+此项目不是医疗、心理诊断或紧急救援服务，也不得直接用于公网开放注册。
 
 ## 已实现范围
 
@@ -12,7 +16,8 @@
 - DeepSeek 默认、OpenAI-compatible 的厂商中立模型网关
 - turn 幂等、同会话单并发、模型调用不占用数据库事务
 - 30 天保留、用户导出/删除、本地匿名研究导出
-- 一个统一水獭资产、CSS 四场景与无沉浸的安全状态
+- 一个统一鹿灵资产、CSS 多场景与无沉浸的安全状态
+- 鹿禅、tata、飞儿的独立角色注册与语音边界；当前运行时仍以鹿禅为主
 - 120 条冻结中文安全语料和自动回归
 
 ## 本地启动
@@ -27,7 +32,7 @@
 
 ### 两种明确入口
 
-- 演示模式：运行 `npm run dev:demo`，打开 `http://localhost:3001`。它使用正式水獭界面和支持引擎，但只在进程内存保存数据，不需要数据库、邀请码或模型密钥。
+- 演示模式：运行 `npm run dev:demo`，打开 `http://localhost:3001`。它使用正式鹿禅界面和支持引擎，但只在进程内存保存数据，不需要数据库、邀请码或模型密钥。
 - 完整模式：先运行 `npm run preflight:full`；新环境可运行 `npm run init:full` 完成迁移、种子和测试邀请码生成，再启动前后端与 Caddy。
 
 演示模式会标注“本地演示，不保存数据”以及真实模型、规则模拟或安全静态响应。页面与 API 版本不一致时必须重新构建并同时重启。
@@ -99,9 +104,20 @@ LLM_TIMEOUT_MS=15000
 
 - `packages/shared`：前后端共享公开类型
 - `server`：Fastify API、Prisma 数据层、支持引擎和测试
-- `web`：React 水面体验
+- `web`：React 当前鹿禅体验与后续三圈界面
 - `infra`：Postgres 与局域网 HTTPS 配置
 - `docs`：产品规则、安全处置、研究和运维材料
+
+## 产品蓝图文档
+
+- `docs/product-experience-constitution-v1.md`：核心体验最高规则
+- `docs/three-circle-world-and-community-linkage-v1.md`：内圈、中圈、外圈及社区联动
+- `docs/inner-outer-circle-switch-v0.1-plan.md`：参考图对应的外圈“万象廊”与首版切换计划
+- `docs/three-agent-character-and-voice-v1-migration.md`：鹿禅、tata、飞儿角色和声线边界
+- `docs/feier-bird-courier-agent-v1-design.md`：飞儿、兴趣档案和活动推荐
+- `docs/product-behavior.md`：当前行为边界与能力状态
+
+文件名包含“灵体水面世界”的材料均为历史实现记录，不再定义当前产品方向。
 
 ## 重要边界
 

@@ -7,13 +7,13 @@ export interface WelcomeMessageV1 {
 
 export function buildWelcomeMessage(visit: BootstrapData["visit"], now = new Date(visit.currentVisitAt)): WelcomeMessageV1 {
   if (!visit.isReturning || !visit.previousVisitAt) {
-    return { text: "嗨，我是 tata。你来了。", timeLabel: null };
+    return { text: "你好，我是鹿禅。水静下来，话便可以慢慢说。", timeLabel: null };
   }
   const previous = new Date(visit.previousVisitAt);
   const elapsedHours = Math.max(0, (now.getTime() - previous.getTime()) / 3_600_000);
-  if (elapsedHours < 4) return { text: "回来啦。刚才没说完的，也可以慢慢说。", timeLabel: "刚刚来过" };
-  if (elapsedHours < 24 && previous.toDateString() === now.toDateString()) return { text: "今天又见到你了。想说什么，我都在听。", timeLabel: "上次是今天" };
-  if (elapsedHours < 48) return { text: "又见到你了。昨天之后，今天过得怎么样？", timeLabel: "上次是昨天" };
-  if (elapsedHours < 24 * 7) return { text: "有几天没见了。欢迎回来。", timeLabel: `大约 ${Math.max(2, Math.round(elapsedHours / 24))} 天前来过` };
-  return { text: "好久不见。欢迎回来，不着急，我们慢慢来。", timeLabel: "有一阵子没见了" };
+  if (elapsedHours < 4) return { text: "又见面了。未尽的话，不必赶着说完。", timeLabel: "刚刚来过" };
+  if (elapsedHours < 24 && previous.toDateString() === now.toDateString()) return { text: "今日再会。心里哪一处有声，就从哪一处说。", timeLabel: "上次是今天" };
+  if (elapsedHours < 48) return { text: "昨天已过。今天的你，落在何处？", timeLabel: "上次是昨天" };
+  if (elapsedHours < 24 * 7) return { text: "有几天没见。此刻回来，便是此刻。", timeLabel: `大约 ${Math.max(2, Math.round(elapsedHours / 24))} 天前来过` };
+  return { text: "久别再会。先坐一会儿，不必急着有答案。", timeLabel: "有一阵子没见了" };
 }

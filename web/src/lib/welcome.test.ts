@@ -4,9 +4,9 @@ import { buildWelcomeMessage } from "./welcome";
 const now = new Date("2026-08-19T12:00:00.000Z");
 const visit = (previousVisitAt?: string, isReturning = true) => ({ visitId: "visit", currentVisitAt: now.toISOString(), ...(previousVisitAt ? { previousVisitAt } : {}), isReturning });
 
-describe("tata welcome message", () => {
+describe("鹿禅 welcome message", () => {
   it("welcomes a first visit without pretending to remember", () => {
-    expect(buildWelcomeMessage(visit(undefined, false), now).text).toContain("我是 tata");
+    expect(buildWelcomeMessage(visit(undefined, false), now).text).toContain("我是鹿禅");
   });
 
   it("uses friendly time bands for returning visits", () => {

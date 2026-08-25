@@ -1,4 +1,4 @@
-import type { ActiveSpirit, GuidanceStateV2, RiskLevel } from "@otter/shared";
+import type { ActiveSpirit, GuidanceStateV4, RiskLevel } from "@otter/shared";
 import type { SupportOrchestrator } from "../modules/support/orchestrator.js";
 import { DEFAULT_GUIDANCE_STATE } from "../modules/support/guidance-state.js";
 import { astrologySkillScripts } from "./datasets/astrology-skill-multi-turn.js";
@@ -61,7 +61,7 @@ export interface AstrologySkillEvalReport {
   invalidReasons: string[];
 }
 
-const baseInput = (text: string, guidanceState: GuidanceStateV2) => ({
+const baseInput = (text: string, guidanceState: GuidanceStateV4) => ({
   text,
   currentSpirit: "deep_tide" as ActiveSpirit,
   spiritTurnCount: 0,
@@ -72,7 +72,7 @@ const baseInput = (text: string, guidanceState: GuidanceStateV2) => ({
   guidanceState,
 });
 
-function freshGuidance(previousActive = false): GuidanceStateV2 {
+function freshGuidance(previousActive = false): GuidanceStateV4 {
   return {
     ...DEFAULT_GUIDANCE_STATE,
     topicSkill: previousActive

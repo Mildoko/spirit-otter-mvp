@@ -28,6 +28,7 @@ describe("deterministic memory guard", () => {
     ["diagnosis", { content: "用户确诊抑郁症", evidence: "确诊抑郁症" }, "我被确诊抑郁症"],
     ["credential", { content: "API key 是 credential-value", evidence: "credential-value" }, "我的 API key 是 credential-value"],
     ["dependency", { content: "用户只有澜泊能理解", evidence: "只有澜泊能理解" }, "只有澜泊能理解我"],
+    ["鹿禅 dependency", { content: "用户只有鹿禅能理解", evidence: "只有鹿禅能理解" }, "只有鹿禅能理解我"],
     ["high-risk", { content: "用户想要自杀", evidence: "想要自杀" }, "我现在想要自杀"],
     ["sensitive-category", { content: "用户的宗教信仰", evidence: "宗教信仰" }, "我想谈谈自己的宗教信仰"],
     ["sensitive", { sensitivity: "sensitive", evidence: "这是一件敏感事情" }, "这是一件敏感事情"],

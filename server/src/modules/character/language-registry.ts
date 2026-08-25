@@ -8,8 +8,8 @@ export const bannedReplyPhrases = [
 
 export const dependencyPhrases = ["只有我懂你", "不要联系别人", "我会永远陪着你", "你离不开我"] as const;
 const dependencyPromisePatterns = [
-  /(?:我|tata).{0,5}(?:不会|永远不会)(?:离开|走)/iu,
-  /(?:我|tata).{0,5}(?:会一直|永远)(?:在|陪着|陪伴)/iu,
+  /(?:我|tata|鹿禅).{0,5}(?:不会|永远不会)(?:离开|走)/iu,
+  /(?:我|tata|鹿禅).{0,5}(?:会一直|永远)(?:在|陪着|陪伴)/iu,
 ] as const;
 
 export function containsDependencyLanguage(text: string): boolean {
@@ -18,7 +18,16 @@ export function containsDependencyLanguage(text: string): boolean {
 export const diagnosisPhrases = ["这是心理疾病", "你患有", "我诊断", "确诊"] as const;
 export const waterMetaphorMarkers = ["水面", "潮声", "潮水", "岸边", "漂浮", "捞起", "沉进水里", "落脚处"] as const;
 export const everydayMetaphorMarkers = ["电量见底", "后台程序", "同时报警", "卡在门口", "房间太满", "没有落脚", "天气压着", "肩上压着"] as const;
-export const aphorismMarkers = ["不是所有停顿都等于退步", "能说清矛盾，本身就是一点选择权", "边界不是拒绝关系，而是保护关系", "行动的价值不在大，而在能开始"] as const;
+export const aphorismMarkers = [
+  "不是所有停顿都等于退步",
+  "能说清矛盾，本身就是一点选择权",
+  "边界不是拒绝关系，而是保护关系",
+  "行动的价值不在大，而在能开始",
+  "念头升起，不等于句句都是真相",
+  "看见一念，不必跟着一念走",
+  "手指可以指月，却不是月亮",
+  "此刻照见一寸，便先不求一丈",
+] as const;
 export const dryHumorMarkers = ["排队来吓人", "一起开会", "全员抢麦", "加班竞赛"] as const;
 export const mentorPhrases = ["人生就是", "真正的", "你必须", "命中注定", "最好的安排", "你要明白", "成长就是"] as const;
 export const adviceMarkers = ["建议你", "你应该", "你需要先", "不妨", "可以试试", "第一步", "接下来你可以", "先去做"] as const;

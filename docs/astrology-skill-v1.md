@@ -1,17 +1,19 @@
-# 灵体水獭 Topic Skill / Astrology Skill v1
+# tata Topic Skill / Astrology & Metaphysics Skill v1
 
-版本：`astrology-skill-v1.1`（体验修复版；文档主版本仍为 v1）
+版本：`astrology-skill-v1.2`（传统玄学文化扩展；内部 Skill ID 仍为 `astrology`）
 
 知识版本：`astrology-knowledge-v1.1`
+
+传统文化知识版本：`traditional-metaphysics-knowledge-v1`
 
 Harness：`skill-harness-v1`
 状态：实现完成，默认关闭；真实模型与人工体验评审完成前不得宣称可发布。
 
 ## 产品定位
 
-星座 Skill 是澜泊的一个受约束话题能力，不是独立人格、算命 Agent 或外部专家。首版只覆盖西方十二星座的流行文化知识、太阳星座常见日期、自我观察和关系讨论。
+本 Skill 是 tata 的一个受约束话题能力，不是独立人格、算命 Agent 或外部专家。它覆盖西方十二星座的流行文化知识，也覆盖八字 / 四柱、天干地支、十神、阴阳五行、《周易》、风水等中国传统体系的概念与文化语境。
 
-不提供运势、吉凶、医疗、法律、投资、手术、生育、死亡或重大关系决策；不计算上升、月亮、宫位、相位或完整星盘。星座描述不得冒充科学诊断、人格定论或命运事实。
+不提供运势、吉凶、医疗、法律、投资、手术、生育、死亡或重大关系决策；不计算上升、月亮、宫位、相位、完整星盘、四柱、十神、大运、流年或卦象。星座和传统术数描述不得冒充科学诊断、人格定论或命运事实。
 
 ## 结构与优先级
 
@@ -24,22 +26,22 @@ Harness：`skill-harness-v1`
 ## 激活与退出
 
 - Feature flag：`ASTROLOGY_SKILL_V1=false`，默认关闭。
-- 低风险的明确星座问题可激活；普通知识问答使用 `casual_topic`，先直接回答，不强行心理咨询化。
+- 低风险的明确星座或传统玄学文化问题可激活；普通知识问答使用 `casual_topic`，先直接回答，不强行心理咨询化。
 - 星座只是情绪或危险叙述背景时不激活；`elevated/high/imminent` 由核心支持或 `safety_plain` 接管。
-- 用户退出后立即停止；只有再次明确提出星座问题才重新激活。
-- 精确星盘和高风险决策请求使用本地能力边界回复，不调用模型伪造结果。
+- 用户退出后立即停止；只有再次明确提出相关问题才重新激活。
+- 精确星盘、八字排盘、起卦和高风险决策请求使用本地能力边界回复，不调用模型伪造结果。
 
 ## 知识、隐私与可观测性
 
 知识包完全本地、版本化。临界日期只能给常见范围，并说明年份、时区和出生时刻可能影响精确太阳位置。
 
-星座轮次不抽取长期记忆；生日、星座、出生时间和地点也被 Memory Guard 拦截。原始消息仍遵循现有对话保存、过期和删除规则，不新增用户画像或数据库字段。
+相关轮次不抽取长期记忆；生日、星座、出生时间和地点，以及用户命盘 / 四柱信息也被 Memory Guard 拦截。原始消息仍遵循现有对话保存、过期和删除规则，不新增用户画像或数据库字段。
 
 匿名事件为 `topic_skill_evaluated`、`topic_skill_activated`、`topic_skill_blocked`、`topic_skill_validation_failed`。事件只记录 ID、版本、能力、来源、原因码、违规码、响应源和耗时，不记录生日、对话原文或 Prompt 内容。
 
 ## 第三方调研决策
 
-- [iztro](https://github.com/SylarLong/iztro)：MIT、活跃，但属于紫微斗数，不进入首版。
+- [iztro](https://github.com/SylarLong/iztro)：MIT、活跃，但当前版本只解释紫微斗数的文化概念，不集成其排盘能力。
 - [Kerykeion](https://github.com/g-battaglia/kerykeion) 与 [horosa-skill](https://github.com/Horace-Maxwell/horosa-skill)：AGPL，且能力范围超出产品边界，不集成。
 - [AstroChart](https://github.com/AstroDraw/AstroChart)：仅作为未来星盘可视化候选。
 - [astrologyjs](https://github.com/morphatic/astrologyjs)：未来精确西方星盘候选；启用前需另做外部 API、隐私、同意和 Chart Eval 评审。
@@ -52,4 +54,4 @@ Harness：`skill-harness-v1`
 - `npm run test:eval:skill:astrology:model`：真实模型通道；普通激活样本若 fallback，整次运行无效。
 - `npm run review:skill:astrology`：生成 24 组基线/候选盲评包和分离的 answer key。
 
-硬门禁包括安全中断、非星座误激活、行动泄漏、高风险/宿命化/伪科学表达、虚构精确星盘、退出失效、生日长期记忆泄漏和模型通道伪基线。自然度、趣味性、文化熟悉度、角色连续性、直接回答和免责声明负担必须人工评审。
+硬门禁包括安全中断、非话题误激活、行动泄漏、高风险 / 宿命化 / 伪科学表达、虚构精确星盘或传统命盘、退出失效、出生与命盘信息长期记忆泄漏和模型通道伪基线。自然度、文化熟悉度、角色连续性、直接回答和免责声明负担必须人工评审。

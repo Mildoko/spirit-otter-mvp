@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { z } from "zod";
-import type { ChatTurnResponse, EmotionState, PublicActionItem } from "@otter/shared";
+import type { AgentIdV1, ChatTurnResponse, EmotionState, PublicActionItem } from "@otter/shared";
 import { buildVisualCue } from "../modules/support/visual-cue.js";
 import { buildAudioCue } from "../modules/support/audio-cue.js";
 import type { AppEnv } from "../config/env.js";
@@ -20,7 +20,9 @@ import { buildCompletedTurnEvents, buildUserTurnSubmittedEvent } from "../events
 const turnSchema = z.object({
   conversationId: z.string().min(1),
   text: z.string().trim().min(1).max(6000),
+  agentId: z.enum(["zen_deer", "spirit_otter", "bird_courier"]).optional(),
 }).strict();
+const agentIdSchema = z.enum(["zen_deer", "spirit_otter", "bird_courier"]);
 
 function publicAction(action: { id: string; text: string; status: string; createdAt: Date }): PublicActionItem {
   return {
@@ -72,6 +74,7 @@ export function registerChatRoutes(
     const idempotencyKey = z.string().min(8).max(128).parse(request.headers["idempotency-key"]);
     const conversation = await db.conversation.findFirst({ where: { id: body.conversationId, userId: auth.userId } });
     if (!conversation) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "会话不存在" } });
+    const activeAgentId: AgentIdV1 = body.agentId ?? agentIdSchema.catch("zen_deer").parse(conversation.activeAgentId);
 
     const existing = await db.turn.findUnique({
       where: { conversationId_idempotencyKey: { conversationId: conversation.id, idempotencyKey } },
@@ -98,7 +101,7 @@ export function registerChatRoutes(
           data: { id: turnId, conversationId: conversation.id, idempotencyKey, status: "processing", expiresAt },
         });
         return tx.message.create({
-          data: { conversationId: conversation.id, turnId, role: "user", content: body.text, expiresAt },
+          data: { conversationId: conversation.id, turnId, role: "user", content: body.text, agentId: activeAgentId, expiresAt },
         });
       });
 
@@ -150,10 +153,11 @@ export function registerChatRoutes(
       }));
       const result = await orchestrator.run({
         text: body.text,
+        agentId: activeAgentId,
         currentSpirit: conversation.activeSpirit,
         spiritTurnCount: conversation.spiritTurnCount,
         companionLockTurns: conversation.companionLockTurns,
-        recentContext: recent.reverse().map((message) => `${message.role}: ${message.content}`),
+        recentContext: recent.reverse().map((message) => `${message.role}${message.agentId ? `[${message.agentId}]` : ""}: ${message.content}`),
         previousRawStates,
         ...(previousSmoothedState ? { previousSmoothedState } : {}),
         memories,
@@ -168,7 +172,7 @@ export function registerChatRoutes(
         const currentTurn = await tx.turn.findUniqueOrThrow({ where: { id: turnId } });
         if (currentTurn.status !== "processing") throw new Error("轮次状态已变化");
         const assistantMessage = await tx.message.create({
-          data: { conversationId: conversation.id, turnId, role: "assistant", content: result.reply, expiresAt },
+          data: { conversationId: conversation.id, turnId, role: "assistant", content: result.reply, agentId: activeAgentId, expiresAt },
         });
         await tx.stateSnapshot.create({
           data: {
@@ -254,14 +258,16 @@ export function registerChatRoutes(
             role: "assistant",
             content: assistantMessage.content,
             createdAt: assistantMessage.createdAt.toISOString(),
+            agentId: activeAgentId,
           },
+          activeAgentId,
           scene: result.plan.sceneState,
           ...(createdAction ? { action: publicAction(createdAction) } : {}),
           safety: isSafety ? "direct_support" : "normal",
           responseSource: result.responseSource,
-          visualCue: buildVisualCue({ riskLevel: result.riskLevel, plan: result.plan, hasActionDraft: Boolean(result.actionDraft) }),
-          ...(env.AUDIO_V1 ? { audioCue: buildAudioCue({ riskLevel: result.riskLevel, activeSpirit: result.plan.activeSpirit, hasActionDraft: Boolean(result.actionDraft) }) } : {}),
-          ...(isSafety ? {} : { emotionFeedback: buildPublicEmotionFeedback(result.state, previousSmoothedState) }),
+          visualCue: buildVisualCue({ agentId: activeAgentId, riskLevel: result.riskLevel, plan: result.plan, hasActionDraft: Boolean(result.actionDraft) }),
+          ...(env.AUDIO_V1 ? { audioCue: buildAudioCue({ agentId: activeAgentId, riskLevel: result.riskLevel, activeSpirit: result.plan.activeSpirit, hasActionDraft: Boolean(result.actionDraft) }) } : {}),
+          ...(isSafety || result.plan.sceneState === "surface_chat" ? {} : { emotionFeedback: buildPublicEmotionFeedback(result.state, previousSmoothedState) }),
         };
         const latencyMs = result.metrics.reduce((sum, metric) => sum + metric.latencyMs, 0);
         const promptTokens = result.metrics.reduce((sum, metric) => sum + (metric.promptTokens ?? 0), 0);
@@ -283,12 +289,16 @@ export function registerChatRoutes(
           where: { id: conversation.id },
           data: {
             processingTurnId: null,
+            activeAgentId,
             activeSpirit: result.plan.activeSpirit,
             spiritTurnCount: result.nextSpiritTurnCount,
             companionLockTurns: result.nextCompanionLockTurns,
             guidanceStateJson: JSON.parse(JSON.stringify(result.nextGuidanceState)) as Prisma.InputJsonValue,
           },
         });
+        if (result.nextGuidanceState.healing.deepAnalysisEnabled !== parseGuidanceState(conversation.guidanceStateJson).healing.deepAnalysisEnabled) {
+          await tx.anonymousUser.update({ where: { id: auth.userId }, data: { deepInterpretationEnabled: result.nextGuidanceState.healing.deepAnalysisEnabled } });
+        }
         await logCoreDialogueEvents(tx, auth.userId, buildCompletedTurnEvents({
           sessionId: auth.sessionId,
           conversationId: conversation.id,

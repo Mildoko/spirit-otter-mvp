@@ -1,8 +1,8 @@
-import type { EmotionState, ExpressiveAccent, GuidanceState, InteractionMode, ResponsePlan, ResponseStyleProfile, ResponseStyleResolution, RiskLevel } from "@otter/shared";
+import type { EmotionState, ExpressiveAccent, GuidanceState, HealingBriefV1, InteractionMode, ResponsePlan, ResponseStyleProfile, ResponseStyleResolution, RiskLevel } from "@otter/shared";
 import { z } from "zod";
 import { DEFAULT_GUIDANCE_STATE } from "../support/guidance-state.js";
 
-export const RESPONSE_STYLE_VERSION = "2026-08-21.1";
+export const RESPONSE_STYLE_VERSION = "2026-08-24.1";
 
 export const responseStyleProfileSchema = z.object({
   pace: z.enum(["very_slow", "slow", "steady", "direct"]), sentenceLength: z.enum(["short", "medium"]),
@@ -42,6 +42,10 @@ export function detectRecentPatterns(recentContext: string[]): string[] {
 
 function outlineFor(plan: ResponsePlan, profile: ResponseStyleProfile, interactionMode: InteractionMode): string[] {
   if (interactionMode === "casual_topic") return ["先直接回答具体话题", "给一个有信息量但不下定论的观察", "留一个自然的继续空间"];
+  if (plan.primaryStrategy === "rupture_repair") return ["承认刚才具体失配", "重新锚定事实和代价", "更换回应方式"];
+  if (plan.primaryStrategy === "rupture_pause") return ["承认连续失配", "停止继续分析", "把方向交还用户"];
+  if (plan.primaryStrategy === "material_crisis_support") return ["说清现实威胁", "贡献一个有证据的理解", "只给一个可拒绝的现实入口"];
+  if (plan.primaryStrategy === "guided_narrowing") return ["确认已经开始缩小", "只选择一个具体维度", profile.questionBudget ? "最多一个具体问题" : "给一个无需回答的观察方法"];
   if (["clarify_low_signal", "clarify_then_invite"].includes(plan.primaryStrategy)) return ["承认此刻难以说清", "只给一种低门槛表达脚手架", profile.questionBudget ? "最多一个核心问题" : "不用问题逼用户回答"];
   if (plan.primaryStrategy === "pause_low_signal") return ["停止追问", "允许暂停或只留一个无需回答的选项"];
   if (plan.transitionStyle === "blend_to_shore") return ["先具体接话", "只指出一个阻塞点", "发出一次可拒绝的邀请；本轮不创建行动"];
@@ -66,7 +70,7 @@ export function selectExpressiveAccent(input: { plan: ResponsePlan; state: Emoti
   return { accent: "none", reason: "NO_SEMANTIC_ACCENT_MATCH" };
 }
 
-export function resolveResponseStyle(input: { plan: ResponsePlan; state: EmotionState; recentContext: string[]; userText: string; riskLevel: RiskLevel; guidanceState?: GuidanceState; expressionV2Enabled?: boolean; expressionClarityScore?: number; interactionMode?: InteractionMode }): ResponseStyleResolution {
+export function resolveResponseStyle(input: { plan: ResponsePlan; state: EmotionState; recentContext: string[]; userText: string; riskLevel: RiskLevel; guidanceState?: GuidanceState; expressionV2Enabled?: boolean; expressionClarityScore?: number; interactionMode?: InteractionMode; healingBrief?: HealingBriefV1 }): ResponseStyleResolution {
   const { plan, state } = input;
   const guidanceState = input.guidanceState ?? DEFAULT_GUIDANCE_STATE;
   const base = plan.transitionStyle === "steady" ? spiritStyleDefaults[plan.activeSpirit] : spiritStyleDefaults[plan.transitionStyle];
@@ -77,6 +81,15 @@ export function resolveResponseStyle(input: { plan: ResponsePlan; state: Emotion
   if (interactionMode === "casual_topic") {
     Object.assign(profile, { pace: "direct", sentenceLength: "medium", responseLength: "normal", warmth: "warm", reflectionDepth: "fact", questionBudget: 1, adviceDirectness: "none", uncertainty: "medium", conversationality: "natural", sentenceRhythm: "mixed", expressiveAccent: "none" });
     reasonCodes.push("CASUAL_TOPIC_DIRECT_ANSWER");
+  }
+  if (input.healingBrief?.status !== undefined && input.healingBrief.status !== "inactive") {
+    Object.assign(profile, {
+      warmth: "close",
+      reflectionDepth: input.healingBrief.insight ? "meaning" : input.healingBrief.realityPressure !== "none" ? "tension" : "fact",
+      conversationality: "natural",
+      expressiveAccent: "none",
+    });
+    reasonCodes.push(input.healingBrief.status === "repairing" ? "HEALING_RUPTURE_REPAIR" : "HEALING_CORE_LOOP");
   }
   if (!plan.allowActionDraft || plan.forbiddenContent.some((item) => /建议|步骤|行动|任务/u.test(item))) profile.adviceDirectness = "none";
   if (guidanceState.userRequestedNoQuestions || plan.forbiddenContent.some((item) => item === "提问")) profile.questionBudget = 0;
@@ -103,6 +116,8 @@ export function resolveResponseStyle(input: { plan: ResponsePlan; state: Emotion
   }
   const selected = interactionMode === "casual_topic"
     ? { accent: "none" as const, reason: "CASUAL_TOPIC_NO_DECORATIVE_ACCENT" }
+    : input.healingBrief?.status !== undefined && input.healingBrief.status !== "inactive"
+      ? { accent: "none" as const, reason: "HEALING_NO_DECORATIVE_ACCENT" }
     : selectExpressiveAccent({ plan, state, riskLevel: input.riskLevel, userText: input.userText, guidanceState, enabled: input.expressionV2Enabled ?? true, ...(input.expressionClarityScore !== undefined ? { expressionClarityScore: input.expressionClarityScore } : {}) });
   if (profile.conversationality !== "restrained") profile.expressiveAccent = selected.accent;
   reasonCodes.push(selected.reason);

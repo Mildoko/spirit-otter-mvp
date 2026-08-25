@@ -10,10 +10,10 @@ import {
 
 describe("product experience constitution", () => {
   it("keeps the versioned priority order and complete invariant registry", () => {
-    expect(EXPERIENCE_CONSTITUTION_VERSION).toBe("experience-v1");
+    expect(EXPERIENCE_CONSTITUTION_VERSION).toBe("experience-v4");
     expect(experiencePriorityOrder).toEqual(["safety_and_reality", "core_experience", "product_policy", "eval_metrics"]);
     expect(experienceInvariants.map((item) => item.id)).toEqual([
-      "EX-01", "EX-02", "EX-03", "EX-04", "EX-05", "EX-06", "EX-07", "EX-08", "EX-09", "EX-10",
+      "EX-01", "EX-02", "EX-03", "EX-04", "EX-05", "EX-06", "EX-07", "EX-08", "EX-09", "EX-10", "EX-11", "EX-12",
     ]);
     expect(() => validateExperienceConstitution()).not.toThrow();
   });

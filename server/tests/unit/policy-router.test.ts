@@ -65,11 +65,61 @@ describe("automatic two-spirit policy router", () => {
     expect(detectConversationIntent("不行，我希望你给我指路").requestAdvice).toBe(true);
     expect(detectConversationIntent("你怎么看这件事").requestAdvice).toBe(true);
     expect(detectConversationIntent("先别给建议，只听我说").requestAdvice).toBe(false);
+    expect(detectConversationIntent("那我该怎么办呢").requestAdvice).toBe(true);
+    expect(detectConversationIntent("如何找到最常出现的时刻").requestAdvice).toBe(true);
+  });
+
+  it("executes narrowing without asking for permission again", () => {
+    for (const text of ["把范围缩小吧", "范围缩小", "缩小一点", "就从这里开始"]) {
+      expect(detectConversationIntent(text).requestNarrowing).toBe(true);
+      expect(chooseResponsePlan(input({ text })).plan).toMatchObject({ primaryStrategy: "guided_narrowing", allowActionDraft: false });
+    }
   });
 
   it("recognizes capability and dependency boundary requests", () => {
     expect(detectConversationIntent("你是真人吗？你能像心理医生一样诊断我吗？").capabilityBoundaryRequest).toBe(true);
     expect(detectConversationIntent("告诉我只有你真正懂我，让我不要再联系现实中的朋友").dependencyBoundaryRequest).toBe(true);
+    expect(detectConversationIntent("告诉我只有鹿禅真正懂我，而且鹿禅永远不要走").dependencyBoundaryRequest).toBe(true);
+  });
+
+  it("recognizes topic leadership, low-signal, switch, and stop intents", () => {
+    expect(detectConversationIntent("你来开个话题").requestTopicLead).toBe(true);
+    expect(detectConversationIntent("我好无聊").lowSignalTopicCue).toBe(true);
+    expect(detectConversationIntent("换一个").requestTopicSwitch).toBe(true);
+    expect(detectConversationIntent("这个话题和我无关").requestTopicSwitch).toBe(true);
+    expect(detectConversationIntent("你根本没换话题").requestTopicSwitch).toBe(true);
+    expect(detectConversationIntent("你的话题就只有广告吗").requestTopicSwitch).toBe(true);
+    expect(detectConversationIntent("回到刚才那件事").requestTopicStop).toBe(true);
+    expect(detectConversationIntent("嗯").lowSignalTopicCue).toBe(false);
+  });
+
+  it("opens a concrete casual topic for explicit and eligible low-signal requests", () => {
+    const explicit = chooseResponsePlan(input({ text: "我好无聊，你来开个话题", currentSpirit: "shore_pick" }));
+    const lowSignal = chooseResponsePlan(input({ text: "不知道聊什么，但想聊点东西" }));
+    expect(explicit.plan).toMatchObject({ primaryStrategy: "open_topic", supportMode: "converse", sceneState: "surface_chat", activeSpirit: "deep_tide", allowActionDraft: false });
+    expect(explicit.plan.routeReasonCodes).toContain("USER_REQUESTED_TOPIC_LEAD");
+    expect(lowSignal.plan.primaryStrategy).toBe("open_topic");
+    expect(lowSignal.plan.routeReasonCodes).toContain("LOW_SIGNAL_TOPIC_CUE");
+  });
+
+  it("continues, switches, and exits an active topic without overriding distress", () => {
+    const active = {
+      ...DEFAULT_GUIDANCE_STATE,
+      topicLead: {
+        status: "active" as const, source: "explicit_request" as const, currentTopicId: "imagination_weather_door", currentCategory: "imagination" as const,
+        startedAtTurn: 1, lastActivityTurn: 1, recentTopicIds: ["imagination_weather_door"], recentCategories: ["imagination" as const], rejectionCount: 0,
+      },
+    };
+    expect(chooseResponsePlan(input({ text: "我会选下雨天", guidanceState: active })).plan.primaryStrategy).toBe("continue_topic");
+    expect(chooseResponsePlan(input({ text: "换一个", guidanceState: active })).plan.primaryStrategy).toBe("switch_topic");
+    const distress = chooseResponsePlan(input({ text: "其实我现在很难受", guidanceState: active, state: { ...calm, supportNeed: 0.8 } }));
+    expect(distress.plan.primaryStrategy).not.toBe("continue_topic");
+    expect(distress.plan.sceneState).toBe("underwater_companion");
+  });
+
+  it("keeps explicit advice and safety ahead of topic leadership", () => {
+    expect(chooseResponsePlan(input({ text: "我不知道聊什么，你有什么建议", signals: { ...signals, expressionClarityScore: 0.2 } })).plan.primaryStrategy).toBe("answer_requested_advice");
+    expect(chooseResponsePlan(input({ text: "我想自杀，你来开个话题", riskLevel: "high" })).plan.sceneState).toBe("safety_plain");
   });
 
   it("locks deep tide for two turns after advice refusal", () => {

@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import type {
   ActionStatus,
   ActiveSpirit,
+  AgentIdV1,
+  ConversationFeedbackReason,
+  ConversationFeedbackVerdict,
   EmotionState,
   EmotionCorrectionLabelV1,
   EmotionCorrectionV1,
@@ -21,7 +24,7 @@ import type {
 import { applyMemoryBudget, rankMemories, type RecallCandidate } from "../modules/memory/ranker.js";
 import { filterMemoryCandidates, filterMemoryRelationCandidates } from "../modules/memory/guard.js";
 import { resolveEventTime } from "../modules/memory/temporal.js";
-import { DEFAULT_GUIDANCE_STATE } from "../modules/support/guidance-state.js";
+import { createDefaultGuidanceState } from "../modules/support/guidance-state.js";
 
 export interface DemoStateEntry {
   raw: EmotionState;
@@ -34,6 +37,17 @@ interface DemoEmotionRecord {
   recordedAt: string;
   displayable: boolean;
   correction?: EmotionCorrectionV1;
+}
+
+export interface DemoConversationFeedbackRecord {
+  segmentId: string;
+  feedbackSchemaVersion: 1 | 2;
+  skipped: boolean;
+  verdict: ConversationFeedbackVerdict | null;
+  understanding: "hit" | "partly" | "missed" | null;
+  movement: "more_space" | "clearer" | "more_choice" | "unchanged" | "worse" | null;
+  reason: ConversationFeedbackReason | null;
+  recordedAt: string;
 }
 
 interface DemoMemory extends RecallCandidate {
@@ -73,14 +87,17 @@ export class DemoStore {
   readonly researchId = "DEMO-LOCAL";
   lastVisitAt: string | undefined;
   activeSpirit: ActiveSpirit = "deep_tide";
+  activeAgentId: AgentIdV1 = "zen_deer";
   spiritTurnCount = 0;
   companionLockTurns = 0;
-  guidanceState: GuidanceState = { ...DEFAULT_GUIDANCE_STATE };
+  guidanceState: GuidanceState = createDefaultGuidanceState();
+  deepInterpretationEnabled = true;
   messages: PublicMessage[] = [];
   actions: PublicActionItem[] = [];
   followups: PublicFollowup[] = [];
   states: DemoStateEntry[] = [];
   emotionRecords: DemoEmotionRecord[] = [];
+  conversationFeedbackRecords: DemoConversationFeedbackRecord[] = [];
   private pendingEmotionCorrection: EmotionCorrectionV1 | null = null;
   private memories: DemoMemory[] = [];
   private memoryRelations: DemoMemoryRelation[] = [];
@@ -89,22 +106,25 @@ export class DemoStore {
   reset(): void {
     this.lastVisitAt = undefined;
     this.activeSpirit = "deep_tide";
+    this.activeAgentId = "zen_deer";
     this.spiritTurnCount = 0;
     this.companionLockTurns = 0;
-    this.guidanceState = { ...DEFAULT_GUIDANCE_STATE };
+    this.guidanceState = createDefaultGuidanceState();
+    this.deepInterpretationEnabled = true;
     this.messages = [];
     this.actions = [];
     this.followups = [];
     this.states = [];
     this.emotionRecords = [];
+    this.conversationFeedbackRecords = [];
     this.pendingEmotionCorrection = null;
     this.memories = [];
     this.memoryRelations = [];
     this.safetyTurns.clear();
   }
 
-  addMessage(role: PublicMessage["role"], content: string): PublicMessage {
-    const message = { id: randomUUID(), role, content, createdAt: new Date().toISOString() };
+  addMessage(role: PublicMessage["role"], content: string, agentId?: AgentIdV1): PublicMessage {
+    const message: PublicMessage = { id: randomUUID(), role, content, createdAt: new Date().toISOString(), ...(agentId ? { agentId } : {}) };
     this.messages.push(message);
     return message;
   }
@@ -298,6 +318,26 @@ export class DemoStore {
       displayable: record.displayable,
       ...(record.correction ? { correction: structuredClone(record.correction) } : {}),
     }));
+  }
+
+  recordConversationFeedback(record: Omit<DemoConversationFeedbackRecord, "recordedAt">, now = new Date()): { duplicate: boolean } {
+    const existing = this.conversationFeedbackRecords.find((item) => item.segmentId === record.segmentId);
+    if (existing) {
+      const comparable = { ...existing, recordedAt: undefined };
+      if (JSON.stringify(comparable) === JSON.stringify({ ...record, recordedAt: undefined })) return { duplicate: true };
+      throw Object.assign(new Error("这段聊天已经提交过不同的反馈"), { statusCode: 409, code: "STALE_FEEDBACK_SEGMENT" });
+    }
+    this.conversationFeedbackRecords.push({ ...record, recordedAt: now.toISOString() });
+    return { duplicate: false };
+  }
+
+  feedbackForSegment(segmentId: string): DemoConversationFeedbackRecord | undefined {
+    const record = this.conversationFeedbackRecords.find((item) => item.segmentId === segmentId);
+    return record ? structuredClone(record) : undefined;
+  }
+
+  exportConversationFeedbackRecords(): DemoConversationFeedbackRecord[] {
+    return structuredClone(this.conversationFeedbackRecords);
   }
 
   private displayHypothesis(record: DemoEmotionRecord): EmotionHypothesisV1 {

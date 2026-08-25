@@ -121,6 +121,8 @@ model AnonymousUser {
   aiDisclosureAcceptedAt    DateTime
   cloudProcessingAcceptedAt DateTime
   dataConsentAcceptedAt     DateTime
+  deepInterpretationAcceptedAt DateTime
+  deepInterpretationEnabled Boolean         @default(true)
   createdAt                 DateTime        @default(now())
   lastActiveAt              DateTime        @default(now())
   expiresAt                 DateTime
@@ -152,6 +154,7 @@ model Conversation {
   id                 String          @id @default(cuid())
   userId             String
   activeSpirit       ActiveSpirit    @default(deep_tide)
+  activeAgentId      String          @default("zen_deer")
   spiritTurnCount    Int             @default(0)
   companionLockTurns Int             @default(0)
   processingTurnId   String?         @unique
@@ -206,6 +209,7 @@ model Message {
   turnId         String
   role           MessageRole
   content        String
+  agentId        String?
   createdAt      DateTime     @default(now())
   expiresAt      DateTime
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -432,7 +436,7 @@ model BehaviorEvent {
   userId       String
   eventKey     String?       @unique
   eventType    String
-  eventVersion String        @default("event-v2")
+  eventVersion String        @default("event-v4")
   metadataJson Json?
   durationMs   Int?
   occurredAt   DateTime      @default(now())

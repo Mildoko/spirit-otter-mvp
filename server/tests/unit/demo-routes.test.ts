@@ -19,6 +19,27 @@ describe("demo mode API contract", () => {
   });
   afterEach(async () => app.close());
 
+  it("opens and persists a local led topic without publishing an emotion guess", async () => {
+    const bootstrap = await app.inject({ method: "GET", url: "/api/session/bootstrap" });
+    const conversationId = bootstrap.json().conversation.id as string;
+    const opened = await app.inject({ method: "POST", url: "/api/chat/turn", payload: { conversationId, text: "我好无聊，你来开个话题" } });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json()).toMatchObject({ scene: "surface_chat", responseSource: "local_fallback" });
+    expect(opened.json()).not.toHaveProperty("action");
+    expect(opened.json()).not.toHaveProperty("emotionInterpretation");
+    expect(opened.json()).not.toHaveProperty("emotionFeedback");
+    expect(store.guidanceState.schemaVersion).toBe(4);
+    expect(store.guidanceState.schemaVersion === 4 && store.guidanceState.topicLead.status).toBe("active");
+    const firstReply = opened.json().reply.content as string;
+    const switched = await app.inject({ method: "POST", url: "/api/chat/turn", payload: { conversationId, text: "换一个" } });
+    expect(switched.json().scene).toBe("surface_chat");
+    expect(switched.json().reply.content).not.toBe(firstReply);
+    expect(switched.json().reply.content).not.toContain("无聊");
+    await app.inject({ method: "DELETE", url: "/api/me/data" });
+    expect(store.guidanceState.schemaVersion === 4 && store.guidanceState.topicLead.status).toBe("inactive");
+    expect(store.guidanceState.schemaVersion === 4 && store.guidanceState.topicLead.recentTopicIds).toEqual([]);
+  });
+
   it("bootstraps without auth and completes automatic route/action flow", async () => {
     const bootstrap = await app.inject({ method: "GET", url: "/api/session/bootstrap" });
     expect(bootstrap.statusCode).toBe(200);
@@ -31,7 +52,7 @@ describe("demo mode API contract", () => {
     expect(blended.statusCode).toBe(200);
     expect(blended.json().responseSource).toBe("local_fallback");
     expect(blended.json().audioCue).toMatchObject({
-      schemaVersion: 1, agentId: "spirit_otter", voiceProfileId: "spirit_otter.shore_pick", soundscapePolicy: "normal",
+      schemaVersion: 1, agentId: "zen_deer", voiceProfileId: "zen_deer.shore_pick", soundscapePolicy: "normal",
     });
     expect(blended.json().emotionDiagnostics).toBeTruthy();
     expect(blended.json().emotionInterpretation).toMatchObject({ status: expect.any(String), canCorrect: true });
@@ -85,7 +106,7 @@ describe("demo mode API contract", () => {
 
   it("exposes safe runtime metadata", async () => {
     expect((await app.inject({ method: "GET", url: "/api/runtime" })).json()).toEqual({
-      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: true, sceneWorldV1Enabled: true, audioV1Enabled: true, cloudTtsEnabled: false, memoryV2Enabled: true,
+      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: false, sceneWorldV1Enabled: true, audioV1Enabled: true, cloudTtsEnabled: false, memoryV2Enabled: true,
     });
   });
 
@@ -140,7 +161,7 @@ describe("demo mode API contract", () => {
       await app.inject({ method: "POST", url: "/api/chat/turn", headers: headers(firstSession), payload: { conversationId: firstConversation, text } });
     }
     const firstMessages = (await app.inject({ method: "GET", url: "/api/session/bootstrap", headers: headers(firstSession) })).json().messages;
-    expect(firstMessages.at(-1).content).toContain("先不继续追问");
+    expect(firstMessages.at(-1).content).not.toMatch(/[？?]/u);
 
     const secondBootstrap = await app.inject({ method: "GET", url: "/api/session/bootstrap", headers: headers(secondSession) });
     expect(secondBootstrap.json().messages).toEqual([]);
@@ -160,6 +181,7 @@ describe("external preview access control", () => {
     aiDisclosureAccepted: true,
     cloudProcessingAccepted: true,
     dataConsentAccepted: true,
+    deepInterpretationAccepted: true,
   };
 
   beforeEach(async () => {

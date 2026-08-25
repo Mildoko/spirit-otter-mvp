@@ -19,11 +19,11 @@ describe("audio director", () => {
     const speech = fakeSpeechAdapter();
     const director = new AudioDirector(speech.adapter, { ...defaultAudioSettings }, vi.fn() as unknown as typeof fetch);
     expect(director.getSnapshot().status).toBe("locked");
-    director.speak({ id: "ignored", text: "不会播放", agentId: "spirit_otter", profileId: "spirit_otter.deep_tide" });
+    director.speak({ id: "ignored", text: "不会播放", agentId: "zen_deer", profileId: "zen_deer.deep_tide" });
     expect(speech.adapter.speak).not.toHaveBeenCalled();
     await director.unlock();
-    director.speak({ id: "one", text: "第一句", agentId: "spirit_otter", profileId: "spirit_otter.deep_tide" });
-    director.speak({ id: "two", text: "第二句", agentId: "spirit_otter", profileId: "spirit_otter.shore_pick" });
+    director.speak({ id: "one", text: "第一句", agentId: "zen_deer", profileId: "zen_deer.deep_tide" });
+    director.speak({ id: "two", text: "第二句", agentId: "zen_deer", profileId: "zen_deer.shore_pick" });
     expect(speech.adapter.speak).toHaveBeenCalledTimes(2);
     expect(speech.adapter.cancel).toHaveBeenCalledTimes(2);
     expect(speech.active()?.id).toBe("two");
@@ -34,8 +34,8 @@ describe("audio director", () => {
     const director = new AudioDirector(speech.adapter, { ...defaultAudioSettings }, vi.fn() as unknown as typeof fetch);
     await director.unlock();
     director.applySoundscapePolicy("silent");
-    director.speak({ id: "safe", text: "现在先确认安全", agentId: "spirit_otter", profileId: "spirit_otter.safety_plain" });
-    expect(speech.active()?.profile.id).toBe("spirit_otter.safety_plain");
+    director.speak({ id: "safe", text: "现在先确认安全", agentId: "zen_deer", profileId: "zen_deer.safety_plain" });
+    expect(speech.active()?.profile.id).toBe("zen_deer.safety_plain");
     expect(director.getSnapshot().soundscapePolicy).toBe("silent");
     director.updateSettings({ ...director.getSnapshot().settings, voiceEnabled: false });
     expect(speech.adapter.cancel).toHaveBeenCalled();

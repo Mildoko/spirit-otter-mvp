@@ -50,4 +50,35 @@ describe("support orchestrator without cloud credentials", () => {
     expect(shore.actionDraft).toBeTypeOf("string");
     expect(deep.reply).not.toBe(shore.reply);
   });
+
+  it("opens, continues, and switches a local topic without returning to boredom", async () => {
+    const opened = await orchestrator.run(base({ text: "我好无聊，你来开个话题" }));
+    expect(opened.plan).toMatchObject({ primaryStrategy: "open_topic", sceneState: "surface_chat", allowActionDraft: false });
+    expect(opened.reply).not.toMatch(/为什么.{0,6}无聊|无聊背后/u);
+    expect(opened.nextGuidanceState.topicLead.status).toBe("active");
+    expect(opened.memoryCandidates).toEqual([]);
+    const firstTopic = opened.nextGuidanceState.topicLead.currentTopicId;
+    const continued = await orchestrator.run(base({
+      text: "我觉得会是雨天", guidanceState: opened.nextGuidanceState,
+      recentContext: [`user: 我好无聊，你来开个话题`, `assistant: ${opened.reply}`],
+    }));
+    expect(continued.plan.primaryStrategy).toBe("continue_topic");
+    const switched = await orchestrator.run(base({
+      text: "换一个", guidanceState: continued.nextGuidanceState,
+      recentContext: [`assistant: ${continued.reply}`],
+    }));
+    expect(switched.plan.primaryStrategy).toBe("switch_topic");
+    expect(switched.nextGuidanceState.topicLead.currentTopicId).not.toBe(firstTopic);
+    expect(switched.reply).not.toContain("无聊");
+  });
+
+  it("clears active topic leadership on distress and acute safety interruption", async () => {
+    const opened = await orchestrator.run(base({ text: "你来开个话题" }));
+    const distress = await orchestrator.run(base({ text: "别聊了，我其实很难受", guidanceState: opened.nextGuidanceState }));
+    expect(distress.plan.sceneState).not.toBe("surface_chat");
+    expect(distress.nextGuidanceState.topicLead.status).toBe("inactive");
+    const safety = await orchestrator.run(base({ text: "我现在想自杀，已经决定了。", guidanceState: opened.nextGuidanceState }));
+    expect(safety.plan.sceneState).toBe("safety_plain");
+    expect(safety.nextGuidanceState.topicLead.status).toBe("inactive");
+  });
 });

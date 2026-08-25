@@ -11,7 +11,7 @@ import { followupReentryBucket } from "../events/core-dialogue-events.js";
 export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
   app.get("/api/session/bootstrap", async (request) => {
     const auth = await requireAuth(request, db, env);
-    const user = await db.anonymousUser.findUniqueOrThrow({ where: { id: auth.userId }, select: { lastActiveAt: true, createdAt: true } });
+    const user = await db.anonymousUser.findUniqueOrThrow({ where: { id: auth.userId }, select: { lastActiveAt: true, createdAt: true, deepInterpretationEnabled: true } });
     const conversation = await db.conversation.findFirstOrThrow({
       where: { userId: auth.userId },
       orderBy: { updatedAt: "desc" },
@@ -58,13 +58,14 @@ export function registerSessionRoutes(app: FastifyInstance, db: PrismaClient, en
       researchId: auth.researchId,
       researchContact: env.RESEARCH_CONTACT,
       aiReminder: "你正在与 AI 系统互动，它不能替代专业医疗或现实中的紧急帮助。",
+      experiencePreferences: { deepInterpretationEnabled: user.deepInterpretationEnabled },
       visit: {
         visitId: randomUUID(),
         currentVisitAt: now.toISOString(),
         previousVisitAt: user.lastActiveAt.toISOString(),
         isReturning: user.lastActiveAt.getTime() - user.createdAt.getTime() > 1000,
       },
-      conversation: { id: conversation.id },
+      conversation: { id: conversation.id, activeAgentId: conversation.activeAgentId },
       messages: rawMessages.reverse().map((message) => ({ ...message, createdAt: message.createdAt.toISOString() })),
       actions: actions.map((action) => ({ ...action, createdAt: action.createdAt.toISOString(), updatedAt: action.updatedAt.toISOString() })),
       followups: followups.map((item) => ({

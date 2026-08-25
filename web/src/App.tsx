@@ -1,21 +1,38 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import type { ChatTurnResponse, CharacterDiagnostics, EmotionDiagnostics, ResponseSource, RuntimeInfo, SceneState, VisualActionV1 } from "@otter/shared";
+import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from "react";
+import type { AgentIdV1, CharacterDiagnostics, ConversationFeedbackReason, ConversationFeedbackVerdict, EmotionDiagnostics, HealingMovementFeedback, HealingUnderstandingFeedback, PublicEmotionInterpretation, PublicPortalItemV01, ResponseSource, RuntimeInfo, SceneState, VisualActionV1 } from "@otter/shared";
 import { api, ApiError, createRequestId, type BootstrapData } from "./lib/api";
 import { Onboarding } from "./components/Onboarding";
 import { ActionCard } from "./components/ActionCard";
-import { EmotionInterpretationCard } from "./components/EmotionInterpretationCard";
 import { SceneWorld, type RendererState, type WorldView } from "./components/SceneWorld";
-import otterPng from "./assets/spirit-otter.png";
-import otterWebp from "./assets/spirit-otter.webp";
+import spiritDeerPng from "./assets/spirit-deer-zen-v1.png";
+import spiritOtterPng from "./assets/spirit-otter.png";
 import { useAudio } from "./audio/AudioProvider";
 import { VoiceInputButton } from "./components/VoiceInputButton";
 import { buildWelcomeMessage, type WelcomeMessageV1 } from "./lib/welcome";
 import { mapTataExpression } from "./lib/otter-expression";
 import { MemoryCenter } from "./components/MemoryCenter";
 import { LandscapePrompt } from "./components/LandscapePrompt";
+import { OuterCircleWorld } from "./components/OuterCircleWorld";
+import { initialOuterCircleState, isOuterCircleActive, outerCircleReducer } from "./lib/outer-circle-state";
+import { AgentSquadDock, agentUiRegistry } from "./components/AgentSquadDock";
+import { buildAgentGreetingRequest } from "./lib/agent-greetings";
 
 type Message = BootstrapData["messages"][number];
 type Action = BootstrapData["actions"][number];
+type CarriedOuterItem = { item: PublicPortalItemV01; target: AgentIdV1 };
+
+const outerBoundaryStorageKey = "boonzoom-outer-boundary-v01";
+const activeAgentStorageKey = "boonzoom-active-agent-v1";
+const defaultVoiceProfileByAgent: Record<AgentIdV1, string> = {
+  zen_deer: "zen_deer.deep_tide",
+  spirit_otter: "spirit_otter.warm_companion",
+  bird_courier: "bird_courier.concierge",
+};
+
+function storedAgentId(): AgentIdV1 {
+  const value = window.sessionStorage.getItem(activeAgentStorageKey);
+  return value === "spirit_otter" || value === "bird_courier" ? value : "zen_deer";
+}
 
 const followupOutcomeOptions = [
   { state: "not_started", label: "还没开始", notice: "收到，还没开始也没关系；这次先不追着它。" },
@@ -38,12 +55,9 @@ export function App() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [emotionFeedback, setEmotionFeedback] = useState<ChatTurnResponse["emotionFeedback"]>();
   const [emotionDiagnostics, setEmotionDiagnostics] = useState<EmotionDiagnostics>();
-  const [emotionInterpretation, setEmotionInterpretation] = useState<ChatTurnResponse["emotionInterpretation"]>();
-  const [emotionTurnId, setEmotionTurnId] = useState<string | null>(null);
+  const [emotionInterpretation, setEmotionInterpretation] = useState<PublicEmotionInterpretation>();
   const [characterDiagnostics, setCharacterDiagnostics] = useState<CharacterDiagnostics>();
-  const [emotionFeedbackEnabled, setEmotionFeedbackEnabled] = useState(() => window.localStorage.getItem("otter-emotion-feedback") !== "off");
   const [lastSafetyTurn, setLastSafetyTurn] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [memoryCenterOpen, setMemoryCenterOpen] = useState(false);
@@ -57,13 +71,25 @@ export function App() {
   const [messageVoiceProfiles, setMessageVoiceProfiles] = useState<Record<string, string>>({});
   const [welcome, setWelcome] = useState<WelcomeMessageV1 | null>(null);
   const [welcomeVisible, setWelcomeVisible] = useState(false);
+  const [deepInterpretationEnabled, setDeepInterpretationEnabled] = useState(true);
+  const [healingEndOpen, setHealingEndOpen] = useState(false);
+  const [healingSegmentId, setHealingSegmentId] = useState<string | null>(null);
+  const [feedbackVerdict, setFeedbackVerdict] = useState<ConversationFeedbackVerdict | null>(null);
+  const [healingUnderstanding, setHealingUnderstanding] = useState<HealingUnderstandingFeedback | null>(null);
+  const [healingMovement, setHealingMovement] = useState<HealingMovementFeedback | null>(null);
+  const [healingReason, setHealingReason] = useState<ConversationFeedbackReason | null>(null);
+  const [activeAgentId, setActiveAgentId] = useState<AgentIdV1>(storedAgentId);
+  const [outerState, dispatchOuter] = useReducer(outerCircleReducer, initialOuterCircleState);
+  const [outerItems, setOuterItems] = useState<PublicPortalItemV01[]>([]);
+  const [carriedOuterItem, setCarriedOuterItem] = useState<CarriedOuterItem | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const visualTimerRef = useRef<number | null>(null);
   const thinkingTimerRef = useRef<number | null>(null);
-  const welcomeSpokenRef = useRef(false);
   const speechInputBaseRef = useRef("");
   const speechInputPolicyRef = useRef(audio.soundscapePolicy);
+  const innerDialogWasOpenRef = useRef(false);
+  const outerExitTimerRef = useRef<number | null>(null);
 
   const runVisualAction = (action: VisualActionV1, durationMs = 1800) => {
     if (visualTimerRef.current) window.clearTimeout(visualTimerRef.current);
@@ -79,11 +105,11 @@ export function App() {
     setActions(data.actions);
     setFollowups(data.followups);
     setEmotionInterpretation(data.lastEmotion?.interpretation);
-    setEmotionTurnId(data.lastEmotion?.turnId ?? null);
     setScene(data.messages.length === 0 ? "quiet_water" : "underwater_companion");
     setWelcome(buildWelcomeMessage(data.visit));
     setWelcomeVisible(true);
-    welcomeSpokenRef.current = false;
+    setDeepInterpretationEnabled(data.experiencePreferences.deepInterpretationEnabled);
+    if (data.conversation.activeAgentId) setActiveAgentId(data.conversation.activeAgentId);
     runVisualAction("notice", 2200);
   };
 
@@ -105,6 +131,7 @@ export function App() {
   useEffect(() => () => {
     if (visualTimerRef.current) window.clearTimeout(visualTimerRef.current);
     if (thinkingTimerRef.current) window.clearTimeout(thinkingTimerRef.current);
+    if (outerExitTimerRef.current) window.clearTimeout(outerExitTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -117,12 +144,6 @@ export function App() {
   }, [audio, runtime?.cloudTtsEnabled]);
 
   useEffect(() => {
-    if (!emotionFeedback) return;
-    const timer = window.setTimeout(() => setEmotionFeedback(undefined), 6500);
-    return () => window.clearTimeout(timer);
-  }, [emotionFeedback]);
-
-  useEffect(() => {
     if (!welcomeVisible) return;
     const timer = window.setTimeout(() => setWelcomeVisible(false), 9_000);
     return () => window.clearTimeout(timer);
@@ -130,14 +151,22 @@ export function App() {
 
   const activeAction = useMemo(() => actions.find((item) => item.status !== "deleted") ?? null, [actions]);
   const expressionCue = useMemo(() => mapTataExpression(emotionInterpretation, scene, welcomeVisible), [emotionInterpretation, scene, welcomeVisible]);
+  const outerCircleActive = isOuterCircleActive(outerState.phase);
+  const selectedOuterItem = outerItems.find((item) => item.id === outerState.selectedItemId);
+  const activeAgent = agentUiRegistry[activeAgentId];
+  const composerPlaceholder = activeAgentId === "spirit_otter"
+    ? "和 tata 说说此刻过得怎么样…"
+    : activeAgentId === "bird_courier"
+      ? "把想安排的事、时间或偏好告诉飞儿…"
+      : scene === "surface_organize" || scene === "near_surface_transition"
+        ? "把眼前最想理清的一件事放在这里…"
+        : scene === "surface_chat"
+          ? "接着聊，或者直接说“换一个”…"
+          : "把此刻最压着你的部分放在这里…";
 
-  const playWelcome = async () => {
-    if (!runtime?.audioV1Enabled || !welcome || welcomeSpokenRef.current) return;
-    welcomeSpokenRef.current = true;
-    await audio.unlock();
-    audio.playSfx("notice_soft");
-    audio.speak({ id: `welcome-${bootstrap?.visit.visitId ?? "visit"}`, text: welcome.text, agentId: "spirit_otter", profileId: "spirit_otter.deep_tide" });
-  };
+  useEffect(() => {
+    window.sessionStorage.setItem(activeAgentStorageKey, activeAgentId);
+  }, [activeAgentId]);
 
   const redeem = async (inviteCode: string) => {
     setError(null);
@@ -151,6 +180,7 @@ export function App() {
         aiDisclosureAccepted: true,
         cloudProcessingAccepted: true,
         dataConsentAccepted: true,
+        deepInterpretationAccepted: true,
       });
       hydrate(await api.bootstrap());
     } catch (reason) {
@@ -168,23 +198,22 @@ export function App() {
     if (thinkingTimerRef.current) window.clearTimeout(thinkingTimerRef.current);
     thinkingTimerRef.current = window.setTimeout(() => setVisualAction("think"), 500);
     setError(null);
-    setEmotionFeedback(undefined);
-    const optimistic: Message = { id: `local-${createRequestId()}`, role: "user", content: text, createdAt: new Date().toISOString() };
+    const targetAgentId = activeAgentId;
+    const optimistic: Message = { id: `local-${createRequestId()}`, role: "user", content: text, createdAt: new Date().toISOString(), agentId: targetAgentId };
     setMessages((items) => [...items, optimistic]);
     setInput("");
     try {
-      const result = await api.turn({ conversationId: bootstrap.conversation.id, text });
+      const result = await api.turn({ conversationId: bootstrap.conversation.id, text, agentId: targetAgentId });
       if (thinkingTimerRef.current) window.clearTimeout(thinkingTimerRef.current);
       setMessages((items) => [...items, result.reply]);
       setScene(result.scene);
       if (result.action) setActions((items) => [result.action!, ...items.filter((item) => item.id !== result.action!.id)]);
       setLastSafetyTurn(result.safety === "direct_support" ? result.turnId : null);
-      setEmotionFeedback(result.safety === "normal" && emotionFeedbackEnabled ? result.emotionFeedback : undefined);
       setEmotionDiagnostics(result.safety === "normal" ? result.emotionDiagnostics : undefined);
-      setEmotionInterpretation(result.safety === "normal" && emotionFeedbackEnabled ? result.emotionInterpretation : undefined);
-      setEmotionTurnId(result.emotionInterpretation ? result.turnId : null);
+      setEmotionInterpretation(result.safety === "normal" ? result.emotionInterpretation : undefined);
       setCharacterDiagnostics(result.safety === "normal" ? result.characterDiagnostics : undefined);
       setLastResponseSource(result.responseSource);
+      setActiveAgentId(result.activeAgentId);
       setOperationNotice(result.safety === "direct_support" ? "已切换为直接安全支持" : "回复已收到");
       runVisualAction(result.visualCue?.action ?? "idle", result.visualCue?.durationMs ?? 1800);
       if (runtime?.audioV1Enabled && result.audioCue) {
@@ -210,11 +239,21 @@ export function App() {
   const refreshAction = (id: string, next: Partial<Action>) => setActions((items) => items.map((item) => item.id === id ? { ...item, ...next } : item));
   const sceneWorldEnabled = Boolean(runtime?.sceneWorldV1Enabled);
 
-  const openDialog = () => {
-    void playWelcome();
+  const playAgentGreeting = async (agentId: AgentIdV1) => {
+    if (!runtime?.audioV1Enabled) return;
+    await audio.unlock();
+    audio.playSfx("approach_water");
+    audio.speak(buildAgentGreetingRequest(agentId, String(Date.now())));
+  };
+
+  const activateAgent = (agentId: AgentIdV1) => {
+    if (busy) return;
+    audio.cancelSpeech();
+    setActiveAgentId(agentId);
     runVisualAction("approach", 1200);
-    if (runtime?.audioV1Enabled) audio.playSfx("approach_water");
+    void playAgentGreeting(agentId);
     setDialogOpen(true);
+    setOperationNotice(`${agentUiRegistry[agentId].name}向你打了招呼，已接入这段对话。切换 Agent 不会自动发送消息。`);
   };
 
   const closeDialog = () => {
@@ -223,43 +262,145 @@ export function App() {
     setDialogOpen(false);
   };
 
+  const loadOuterCircle = async () => {
+    setError(null);
+    try {
+      const feed = await api.publicPortalFeed();
+      setOuterItems(feed.items);
+      dispatchOuter({ type: "loaded" });
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "外圈暂时没有显现，请留在船上稍后再试";
+      dispatchOuter({ type: "load_failed", message });
+      setDialogOpen(innerDialogWasOpenRef.current);
+      setError(message);
+    }
+  };
+
+  const openOuterCircle = () => {
+    if (scene === "safety_plain") {
+      setDialogOpen(true);
+      setOperationNotice("现在先把安全放在前面，外圈入口暂时收起。你仍可以继续和鹿禅说话。");
+      return;
+    }
+    innerDialogWasOpenRef.current = dialogOpen;
+    const acknowledged = window.sessionStorage.getItem(outerBoundaryStorageKey) === "acknowledged";
+    dispatchOuter({ type: "open", boundaryAcknowledged: acknowledged });
+    if (acknowledged) {
+      audio.cancelSpeech();
+      setDialogOpen(false);
+      void loadOuterCircle();
+    }
+  };
+
+  const confirmOuterBoundary = () => {
+    window.sessionStorage.setItem(outerBoundaryStorageKey, "acknowledged");
+    dispatchOuter({ type: "acknowledge" });
+    audio.cancelSpeech();
+    setDialogOpen(false);
+    void loadOuterCircle();
+  };
+
+  const finishOuterExit = (dialogShouldOpen: boolean) => {
+    if (outerExitTimerRef.current) window.clearTimeout(outerExitTimerRef.current);
+    outerExitTimerRef.current = window.setTimeout(() => {
+      dispatchOuter({ type: "exited" });
+      setDialogOpen(dialogShouldOpen);
+      outerExitTimerRef.current = null;
+    }, 260);
+  };
+
+  const returnToInnerCircle = () => {
+    dispatchOuter({ type: "return" });
+    finishOuterExit(innerDialogWasOpenRef.current);
+  };
+
+  const carryOuterItemInside = (item: PublicPortalItemV01, target: AgentIdV1) => {
+    setCarriedOuterItem({ item, target });
+    setActiveAgentId(target);
+    setOperationNotice(target === "bird_courier"
+      ? "公共内容已带回船上，飞儿已接入。她不会自动记录兴趣，也不会替你报名。"
+      : `公共内容已带回船上，${agentUiRegistry[target].name}已接入。要不要聊，由你决定。`
+    );
+    dispatchOuter({ type: "return" });
+    finishOuterExit(true);
+  };
+
+  const openHealingEnd = async () => {
+    if (!bootstrap || busy) return;
+    setHealingEndOpen(true);
+    setFeedbackVerdict(null);
+    setHealingUnderstanding(null);
+    setHealingMovement(null);
+    setHealingReason(null);
+    setHealingSegmentId(null);
+    try {
+      const result = await api.requestHealingFeedback(bootstrap.conversation.id);
+      setHealingSegmentId(result.segmentId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "暂时无法打开反馈");
+    }
+  };
+
+  const finishHealingSession = async (skipped = false) => {
+    if (!bootstrap || busy) return;
+    if (!feedbackVerdict && !skipped) return;
+    setBusy(true);
+    try {
+      const segmentId = healingSegmentId ?? (await api.requestHealingFeedback(bootstrap.conversation.id)).segmentId;
+      await api.endHealingSession(bootstrap.conversation.id, skipped
+        ? { segmentId, skipped: true }
+        : { segmentId, feedback: { schemaVersion: 2, verdict: feedbackVerdict!, ...(healingUnderstanding ? { understanding: healingUnderstanding } : {}), ...(healingMovement ? { movement: healingMovement } : {}), ...(healingReason ? { reason: healingReason } : {}) } });
+      setHealingEndOpen(false);
+      setHealingSegmentId(null);
+      setFeedbackVerdict(null);
+      setHealingUnderstanding(null);
+      setHealingMovement(null);
+      setHealingReason(null);
+      setOperationNotice("本次聊天已结束；你仍可以从新的内容继续");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "暂时无法结束本次聊天");
+    } finally { setBusy(false); }
+  };
+
   if (loading) return <div className="loading-screen"><div className="loading-ripple" /><span>水面正在变得清晰…</span></div>;
   if (!bootstrap) return <Onboarding onSubmit={redeem} error={error} persistent={Boolean(runtime?.persistent)} soundEnabled={Boolean(runtime?.audioV1Enabled)} />;
 
   return (
-    <main className={`app-shell scene-${scene}${sceneWorldEnabled ? " scene-world-shell" : ""}`}>
-      <LandscapePrompt />
-      {!sceneWorldEnabled && <><div className="water-light" aria-hidden="true" /><div className="water-ripple ripple-one" aria-hidden="true" /><div className="water-ripple ripple-two" aria-hidden="true" /></>}
-      {sceneWorldEnabled && <SceneWorld
+    <main className={`app-shell scene-${scene}${sceneWorldEnabled ? " scene-world-shell" : ""}${outerCircleActive ? " outer-circle-active" : ""}`}>
+      {!outerCircleActive && <LandscapePrompt />}
+      {!outerCircleActive && !sceneWorldEnabled && <><div className="water-light" aria-hidden="true" /><div className="water-ripple ripple-one" aria-hidden="true" /><div className="water-ripple ripple-two" aria-hidden="true" /></>}
+      {!outerCircleActive && sceneWorldEnabled && <SceneWorld
         action={visualAction}
         view={worldView}
         onViewChange={setWorldView}
-        onOtterActivate={openDialog}
+        onSpiritActivate={() => activateAgent("zen_deer")}
         onRendererState={setRendererState}
-        showDiagnostics={runtime?.mode !== "full"}
+        showDiagnostics={Boolean(runtime?.emotionDiagnosticsAvailable)}
         expressionCue={expressionCue}
         dialogOpen={dialogOpen}
         {...(welcomeVisible && welcome ? { welcomeText: welcome.text } : {})}
         {...(welcomeVisible && welcome?.timeLabel ? { welcomeTimeLabel: welcome.timeLabel } : {})}
       />}
+      {outerCircleActive && <OuterCircleWorld
+        phase={outerState.phase as "loading" | "gallery" | "detail" | "exiting"}
+        items={outerItems}
+        {...(selectedOuterItem ? { selectedItem: selectedOuterItem } : {})}
+        onOpenItem={(item) => dispatchOuter({ type: "select", itemId: item.id })}
+        onCloseDetail={() => dispatchOuter({ type: "close_detail" })}
+        onReturnInner={returnToInnerCircle}
+        onCarryInner={carryOuterItemInside}
+        activeAgentId={activeAgentId}
+        activeAgentName={activeAgent.name}
+      />}
+      {!outerCircleActive && scene !== "safety_plain" && <AgentSquadDock activeAgentId={activeAgentId} disabled={busy} onActivate={activateAgent} />}
       <header className="topbar">
         <div className="brand-stack">
-          <div className="brand"><span className="brand-dot" /> <strong>BoonZoom</strong><span>与 tata 待一会儿</span></div>
-          {emotionFeedbackEnabled && emotionInterpretation && emotionTurnId && scene !== "safety_plain" && <div className="emotion-interpretation-inline">
-            <EmotionInterpretationCard
-              turnId={emotionTurnId}
-              interpretation={emotionInterpretation}
-              onCorrect={async (verdict, labels) => {
-                const result = await api.correctEmotion({ turnId: emotionTurnId, verdict, ...(labels ? { labels } : {}) });
-                setEmotionInterpretation(result.emotionInterpretation);
-                setOperationNotice(verdict === "accurate" ? "已记录：这次猜测准确" : "已按你的纠正更新，本次会话下一轮会参考");
-              }}
-            />
-          </div>}
+          <div className="brand"><span className="brand-dot" /> <strong>BoonZoom</strong><span>{outerCircleActive ? "外圈 · 万象廊" : `内圈 · ${activeAgent.name}在席`}</span></div>
         </div>
         <div className="topbar-actions">
+          {!outerCircleActive && outerState.phase !== "boundary" && scene !== "safety_plain" && <button type="button" className="outer-entry-button" onClick={openOuterCircle}><span aria-hidden="true">◇</span> 去外圈看看</button>}
           {runtime?.audioV1Enabled && <button className={`sound-button sound-${audio.status}`} onClick={async () => {
-            if (!audio.unlocked) await playWelcome();
+            if (!audio.unlocked) await playAgentGreeting(activeAgentId);
             else audio.toggleMaster();
           }} aria-label={!audio.unlocked ? "开启声音" : audio.settings.masterEnabled ? "静音" : "恢复声音"} aria-pressed={audio.unlocked && audio.settings.masterEnabled}>
             <span aria-hidden="true">{!audio.unlocked ? "♪" : audio.settings.masterEnabled ? "◖))" : "◖×"}</span>{!audio.unlocked ? "开启声音" : audio.speaking ? "正在朗读" : audio.settings.masterEnabled ? "声音已开" : "已静音"}
@@ -279,17 +420,15 @@ export function App() {
 
       {(timeReminder || (!aiReminderDismissed && bootstrap.aiReminder)) && <aside className="ai-reminder"><span>{timeReminder ? "你已经连续使用一段时间。这里是 AI 服务，先离开屏幕休息一下也很好。" : bootstrap.aiReminder}</span><button onClick={() => { setTimeReminder(false); setAiReminderDismissed(true); }} aria-label="关闭提醒">×</button></aside>}
 
-      <section className={`experience-layout${sceneWorldEnabled ? " world-experience-layout" : ""}`}>
-        {!sceneWorldEnabled && <aside className="character-panel" aria-label="tata 的水面场景">
-          <div className="scene-caption"><span>{scene === "surface_organize" ? "水面 · 聚焦一件事" : scene === "near_surface_transition" ? "近水面 · 看清一点" : scene === "safety_plain" ? "直接支持" : "静水区 · 先听你说"}</span></div>
-          {scene !== "safety_plain" && <div className="otter-stage">
-            <picture><source srcSet={otterWebp} type="image/webp" /><img src={otterPng} alt="安静陪在水面的 tata" className="otter-image" /></picture>
-            <div className={`tata-expression tata-expression-${expressionCue.expression}`} role="img" aria-label={expressionCue.label}><span aria-hidden="true">{expressionCue.symbol}</span></div>
-            {welcomeVisible && welcome && <aside className="tata-welcome-bubble" role="status"><strong>tata</strong><p>{welcome.text}</p>{welcome.timeLabel && <small>{welcome.timeLabel}</small>}</aside>}
-            {emotionFeedbackEnabled && emotionFeedback && emotionFeedback.cues.length > 0 && <div className="emotion-floats" aria-label={emotionFeedback.disclaimer}>
-              {emotionFeedback.cues.map((cue, index) => <span key={`${emotionFeedback.observedAt}-${cue.dimension}`} className={`emotion-float emotion-${cue.tone} emotion-slot-${index + 1}`}>{cue.text}</span>)}
-              <small>{emotionFeedback.disclaimer}</small>
-            </div>}
+      {!outerCircleActive && <section className={`experience-layout${sceneWorldEnabled ? " world-experience-layout" : ""}`}>
+        {!sceneWorldEnabled && <aside className="character-panel" aria-label={`${activeAgent.species}${activeAgent.name}的私密场景`}>
+          <div className="scene-caption"><span>{scene === "surface_organize" ? "水面 · 聚焦一件事" : scene === "surface_chat" ? "水面 · 随便聊聊" : scene === "near_surface_transition" ? "近水面 · 看清一点" : scene === "safety_plain" ? "直接支持" : "静水区 · 先听你说"}</span></div>
+          {scene !== "safety_plain" && <div className={`spirit-stage spirit-stage-${activeAgentId}`}>
+            {activeAgentId === "zen_deer" && <img src={spiritDeerPng} alt="安坐水边的鹿灵鹿禅" className="spirit-image" />}
+            {activeAgentId === "spirit_otter" && <img src={spiritOtterPng} alt="温暖靠近的水獭 tata" className="spirit-image spirit-image-otter" />}
+            {activeAgentId === "bird_courier" && <div className="feier-stage-mark" role="img" aria-label="飞鸟信差飞儿"><i /><i /><i /><span>飞儿</span></div>}
+            {activeAgentId === "zen_deer" && <div className={`tata-expression tata-expression-${expressionCue.expression}`} role="img" aria-label={expressionCue.label}><span aria-hidden="true">{expressionCue.symbol}</span></div>}
+            {activeAgentId === "zen_deer" && welcomeVisible && welcome && <aside className="tata-welcome-bubble" role="status"><strong>鹿禅</strong><p>{welcome.text}</p>{welcome.timeLabel && <small>{welcome.timeLabel}</small>}</aside>}
           </div>}
           {runtime?.emotionDiagnosticsAvailable && emotionDiagnostics && scene !== "safety_plain" && <section className="emotion-diagnostics" aria-label="情绪状态诊断">
             <strong>状态诊断 · {emotionDiagnostics.signalSource === "cloud_model" ? "真实模型" : "本地规则"}</strong>
@@ -303,11 +442,11 @@ export function App() {
             {characterDiagnostics && <p>角色路由：{characterDiagnostics.activeSpirit} · {characterDiagnostics.transitionStyle} · 锁定 {characterDiagnostics.lockTurnsRemaining} 轮<br />原因：{characterDiagnostics.reasonCodes.join("、")} · 版本 {characterDiagnostics.characterVersion}</p>}
           </section>}
           {scene === "safety_plain" && <div className="safety-symbol" aria-hidden="true">!</div>}
-          <blockquote>{scene === "surface_organize" ? "我们只捞起眼前的一件事。" : scene === "safety_plain" ? "现在先把安全放在最前面。" : "我在听，不急着把你推向答案。"}</blockquote>
+          <blockquote>{scene === "safety_plain" ? "现在先把安全放在最前面。" : activeAgentId === "spirit_otter" ? "先照顾好此刻的人，再慢慢看事情。" : activeAgentId === "bird_courier" ? "条件说清楚，下一步才不会替你作主。" : scene === "surface_organize" ? "万事纷来，先照见眼前这一件。" : scene === "surface_chat" ? "这次由鹿禅讲一段新鲜的。" : "我在听，不急着把你推向答案。"}</blockquote>
         </aside>}
 
-        {(!sceneWorldEnabled || dialogOpen) && <section className={`conversation-card face-dialogue${sceneWorldEnabled ? " conversation-drawer" : ""}`} aria-label="与 tata 的对话">
-          {sceneWorldEnabled && <header className="drawer-header"><div><small>水面上的对话</small><strong>tata 在听</strong></div><button onClick={closeDialog} aria-label="收起对话">×</button></header>}
+        {(!sceneWorldEnabled || dialogOpen) && <section className={`conversation-card face-dialogue${sceneWorldEnabled ? " conversation-drawer" : ""}`} aria-label={`与${activeAgent.name}的对话`}>
+          {sceneWorldEnabled && <header className="drawer-header"><div><small>{activeAgent.species} · {activeAgent.shortRole}</small><strong>{activeAgent.name}在听</strong></div><button onClick={closeDialog} aria-label="收起对话">×</button></header>}
           {followups.length > 0 && <div className="followup-stack">
             {followups.map((item) => <article className="followup-card" key={item.id}>
               <span>上次留下的小物件</span><p>{item.action.text}</p><small>不用交作业，只选最接近现在的状态。</small>
@@ -323,11 +462,26 @@ export function App() {
           </div>}
 
           <div className="messages" aria-live="polite">
-            {messages.length === 0 && <div className="empty-state"><p>今天想从哪里开始？</p><span>不用选择方式。你可以只是说说，也可以直接告诉 tata 想把哪件事理清一点。</span></div>}
-            {messages.map((message) => <article key={message.id} className={`message message-${message.role}`}><span>{message.role === "assistant" ? "tata" : "你"}</span><p>{message.content}</p>{message.role === "assistant" && runtime?.audioV1Enabled && <button className="voice-replay" onClick={() => audio.replay({ id: `replay-${message.id}`, text: message.content, agentId: "spirit_otter", profileId: messageVoiceProfiles[message.id] ?? "spirit_otter.deep_tide" })} aria-label="重播这条 tata 回复">↻ 语音</button>}</article>)}
-            {busy && <article className="message message-assistant thinking"><span>tata</span><p><i /><i /><i /></p></article>}
+            {carriedOuterItem && <article className="carried-outer-item" aria-label="从外圈带回的公共内容">
+              <header><span>从万象廊带回</span><button type="button" onClick={() => setCarriedOuterItem(null)} aria-label="收起带回的内容">×</button></header>
+              <strong>{carriedOuterItem.item.title}</strong>
+              <p>{carriedOuterItem.item.summary}</p>
+              <small>{carriedOuterItem.target === "bird_courier" ? "暂存给飞儿 · 未写入兴趣" : `准备和${agentUiRegistry[carriedOuterItem.target].name}聊聊 · 尚未发送`}</small>
+              <div>
+                <button type="button" onClick={() => setInput(`我想聊聊这条公开内容：${carriedOuterItem.item.title}。`)}>放进输入框</button>
+                <button type="button" className="ghost" onClick={() => setCarriedOuterItem(null)}>先放下</button>
+              </div>
+            </article>}
+            {messages.length === 0 && <div className="empty-state"><p>{activeAgent.emptyTitle}</p><span>{activeAgent.emptyBody}</span></div>}
+            {messages.map((message) => {
+              const messageAgentId = message.agentId ?? "zen_deer";
+              const messageAgent = agentUiRegistry[messageAgentId];
+              return <article key={message.id} className={`message message-${message.role}`}><span>{message.role === "assistant" ? messageAgent.name : "你"}</span><p>{message.content}</p>{message.role === "assistant" && runtime?.audioV1Enabled && <button className="voice-replay" onClick={() => audio.replay({ id: `replay-${message.id}`, text: message.content, agentId: messageAgentId, profileId: messageVoiceProfiles[message.id] ?? defaultVoiceProfileByAgent[messageAgentId] })} aria-label={`重播这条${messageAgent.name}回复`}>↻ 语音</button>}</article>;
+            })}
+            {busy && <article className="message message-assistant thinking"><span>{activeAgent.name}</span><p><i /><i /><i /></p></article>}
             {activeAction && <ActionCard action={activeAction} onConfirm={async (text) => { await api.confirmAction(activeAction.id, "confirm", text); refreshAction(activeAction.id, { text, status: "confirmed" }); }} onAbandon={async () => { await api.confirmAction(activeAction.id, "abandon"); refreshAction(activeAction.id, { status: "deleted" }); }} onUpdate={async (status) => { await api.updateAction(activeAction.id, status); refreshAction(activeAction.id, { status }); }} onFollowup={async () => { const due = new Date(Date.now() + 24 * 60 * 60 * 1000); await api.createFollowup(activeAction.id, due.toISOString()); }} />}
             {lastSafetyTurn && <button className="research-help" onClick={() => api.requestHelp(lastSafetyTurn).then((result) => setError(`已记录请求：${result.contact}`))}>请现场研究人员过来</button>}
+            {messages.some((message) => message.role === "assistant") && <button className="end-chat-entry" onClick={() => void openHealingEnd()}>结束本次聊天</button>}
             <div ref={endRef} />
           </div>
 
@@ -340,7 +494,7 @@ export function App() {
           {error && <p className="inline-error" role="alert">{error}</p>}
           {operationNotice && <p className="operation-notice" role="status" aria-live="polite">{operationNotice}</p>}
           <form className="composer" onSubmit={send}>
-            <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder={scene === "surface_organize" || scene === "near_surface_transition" ? "把眼前最想理清的一件事放在这里…" : "把此刻最压着你的部分放在这里…"} rows={2} maxLength={6000} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} />
+            <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder={composerPlaceholder} rows={2} maxLength={6000} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} />
             <VoiceInputButton
               disabled={busy}
               onStart={() => {
@@ -366,22 +520,40 @@ export function App() {
           </form>
           <p className="composer-note">按住麦克风说话，松开后识别文字会直接发送。识别由当前浏览器提供，可能使用其在线语音服务；也可以随时改用文字输入。</p>
         </section>}
-      </section>
+      </section>}
+
+      {outerState.phase === "boundary" && <div className="modal-backdrop outer-boundary-backdrop" role="presentation" onMouseDown={() => dispatchOuter({ type: "return" })}><section className="settings-modal outer-boundary-modal" role="dialog" aria-modal="true" aria-labelledby="outer-boundary-title" onMouseDown={(event) => event.stopPropagation()}>
+        <button type="button" className="modal-close" onClick={() => dispatchOuter({ type: "return" })} aria-label="留在船上">×</button>
+        <p className="eyebrow">跨出私密边界之前</p>
+        <h2 id="outer-boundary-title">船上是你的内圈，门廊外是公共世界</h2>
+        <div className="outer-boundary-map" aria-hidden="true"><span>你与 Agent 小队</span><i /><span>公开内容</span></div>
+        <ul>
+          <li><strong>内圈：</strong>船上的对话和记忆仍留在私密空间。</li>
+          <li><strong>外圈：</strong>首版只展示预先编辑的演示内容，不读取你的私密对话。</li>
+          <li><strong>你的控制：</strong>可以随时返回；浏览不等于报名、加入或留下兴趣。</li>
+        </ul>
+        <button type="button" className="primary-button" onClick={confirmOuterBoundary}>明白，去外圈看看</button>
+        <button type="button" className="secondary-button" onClick={() => dispatchOuter({ type: "return" })}>这次留在船上</button>
+      </section></div>}
 
       {settingsOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => { setSettingsOpen(false); settingsButtonRef.current?.focus(); }}><section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onKeyDown={(event) => { if (event.key === "Escape") { setSettingsOpen(false); settingsButtonRef.current?.focus(); } }} onMouseDown={(event) => event.stopPropagation()}>
         <button className="modal-close" autoFocus onClick={() => { setSettingsOpen(false); settingsButtonRef.current?.focus(); }} aria-label="关闭设置">×</button>
         <p className="eyebrow">数据与边界</p><h2 id="settings-title">你的控制权</h2>
         <dl><div><dt>匿名研究编号</dt><dd>{bootstrap.researchId}</dd></div><div><dt>本地保存</dt><dd>对话及系统自动提取的可能重要信息，最长 30 天</dd></div><div><dt>云端处理</dt><dd>对话会发送给模型供应商；本地删除不控制其日志。</dd></div><div><dt>反馈、申诉或求助</dt><dd>{bootstrap.researchContact}</dd></div></dl>
-        <label className="setting-toggle"><input type="checkbox" checked={emotionFeedbackEnabled} onChange={(event) => { const enabled = event.target.checked; setEmotionFeedbackEnabled(enabled); window.localStorage.setItem("otter-emotion-feedback", enabled ? "on" : "off"); if (!enabled) { setEmotionFeedback(undefined); setEmotionInterpretation(undefined); } }} /><span>显示情绪变化与 tata 的理解</span></label>
-        <p className="settings-footnote">情绪提示只是 AI 对这一刻的暂时理解，可能不准确。</p>
+        <label className="setting-toggle"><input type="checkbox" checked={deepInterpretationEnabled} onChange={async (event) => { const enabled = event.target.checked; setDeepInterpretationEnabled(enabled); try { await api.updateExperiencePreferences({ deepInterpretationEnabled: enabled }); } catch (reason) { setDeepInterpretationEnabled(!enabled); setError(reason instanceof Error ? reason.message : "设置没有保存"); } }} /><span>允许鹿禅主动提出深入理解</span></label>
+        <p className="settings-footnote">关闭后，鹿禅仍会回应和提供现实支持，但不会主动分析心理意义；你也可以直接说“别分析”。</p>
         {runtime?.memoryV2Enabled && <section className="memory-settings-entry" aria-labelledby="memory-settings-title">
-          <div><h3 id="memory-settings-title">tata 记得的我</h3><p>查看 tata 留下的事实、经历和关系推测，并随时纠正或删除。</p></div>
+          <div><h3 id="memory-settings-title">鹿禅记得的我</h3><p>查看鹿禅留下的事实、经历和关系推测，并随时纠正或删除。</p></div>
           <button className="secondary-button" onClick={() => { setSettingsOpen(false); setMemoryCenterOpen(true); }}>查看和管理记忆</button>
         </section>}
+        <section className="memory-settings-entry" aria-labelledby="outer-settings-title">
+          <div><h3 id="outer-settings-title">内圈与外圈</h3><p>重新查看公开世界与私密船上世界之间的边界说明。</p></div>
+          <button className="secondary-button" onClick={() => { setSettingsOpen(false); dispatchOuter({ type: "review_boundary" }); }}>查看外圈边界</button>
+        </section>
         {runtime?.audioV1Enabled && <section className="audio-settings" aria-labelledby="audio-settings-title">
           <h3 id="audio-settings-title">声音</h3>
           <label className="setting-toggle"><input type="checkbox" checked={audio.settings.masterEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, masterEnabled: event.target.checked })} /><span>声音总开关</span></label>
-          <label className="setting-toggle"><input type="checkbox" checked={audio.settings.voiceEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, voiceEnabled: event.target.checked })} /><span>tata 回复语音</span></label>
+          <label className="setting-toggle"><input type="checkbox" checked={audio.settings.voiceEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, voiceEnabled: event.target.checked })} /><span>Agent 回复语音</span></label>
           <label className="setting-toggle"><input type="checkbox" checked={audio.settings.bgmEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, bgmEnabled: event.target.checked })} /><span>场景背景音乐</span></label>
           <label className="setting-toggle"><input type="checkbox" checked={audio.settings.sfxEnabled} onChange={(event) => audio.updateSettings({ ...audio.settings, sfxEnabled: event.target.checked })} /><span>场景互动音效</span></label>
           <label className="volume-setting"><span>总音量</span><input aria-label="总音量" type="range" min="0" max="1" step="0.05" value={audio.settings.masterVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, masterVolume: Number(event.target.value) })} /></label>
@@ -389,13 +561,30 @@ export function App() {
           <label className="volume-setting"><span>背景音乐</span><input aria-label="背景音乐音量" type="range" min="0" max="1" step="0.05" value={audio.settings.bgmVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, bgmVolume: Number(event.target.value) })} /></label>
           <label className="volume-setting"><span>互动音效</span><input aria-label="互动音效音量" type="range" min="0" max="1" step="0.05" value={audio.settings.sfxVolume} onChange={(event) => audio.updateSettings({ ...audio.settings, sfxVolume: Number(event.target.value) })} /></label>
           <p className="settings-footnote">进入体验时声音默认开启。你可以随时静音，或分别关闭回复语音、背景音乐和互动音效。</p>
-          <p className="settings-footnote">当前音色：{runtime.cloudTtsEnabled ? "tata · 晓晓甜美女声（云端）" : "tata · 中文女性系统声线（云端晓晓未配置时的降级）"}</p>
+          <p className="settings-footnote">当前角色音色：{activeAgentId === "zen_deer" ? runtime.cloudTtsEnabled ? "鹿禅 · 云健沉稳男声（云端）" : "鹿禅 · 优先中文低沉男声" : activeAgentId === "spirit_otter" ? "tata · 温暖柔和女声" : "飞儿 · 清晰利落女声"}。实际声音取决于当前设备可用声线。</p>
           {!audio.speechSupported && <p className="settings-footnote" role="status">当前浏览器没有可用的系统语音，文字、背景音乐和音效仍可使用。</p>}
         </section>}
         <button className="secondary-button" onClick={() => void api.exportMe()}>导出我的数据</button>
         <button className="secondary-button" onClick={async () => { await api.logout(); window.location.reload(); }}>退出本次会话</button>
         <button className="danger-button" onClick={async () => { if (window.confirm("确定永久删除本地全部对话、记忆、行动和回访吗？")) { await api.deleteMe(); window.location.reload(); } }}>永久删除本地数据</button>
         <p className="settings-footnote">本产品不是医疗或心理诊断服务。你可以随时关闭页面，不需要向角色解释。</p>
+      </section></div>}
+      {healingEndOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setHealingEndOpen(false)}><section className="settings-modal healing-end-modal" role="dialog" aria-modal="true" aria-labelledby="healing-end-title" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="modal-close" onClick={() => setHealingEndOpen(false)} aria-label="继续聊天">×</button>
+        <p className="eyebrow">可选反馈</p><h2 id="healing-end-title">这次聊天对你有帮助吗？</h2>
+        <div className="conversation-verdict-row" role="group" aria-label="这次聊天是否有帮助">
+          <button type="button" aria-pressed={feedbackVerdict === 'helpful'} onClick={() => setFeedbackVerdict('helpful')}><span aria-hidden="true">👍</span> 有帮助</button>
+          <button type="button" aria-pressed={feedbackVerdict === 'not_helpful'} onClick={() => setFeedbackVerdict('not_helpful')}><span aria-hidden="true">👎</span> 没帮到</button>
+        </div>
+        {feedbackVerdict && <section className={`feedback-details feedback-details-${feedbackVerdict}`} aria-label="可选详细反馈">
+          <p>如果愿意，可以再告诉我们一点；这些都可以不选。</p>
+          <fieldset><legend>是否说到真正难受的地方</legend><div className="healing-choice-row">{([['hit','说到了'],['partly','说到一部分'],['missed','没有说到']] as const).map(([value,label]) => <button key={value} type="button" aria-pressed={healingUnderstanding === value} onClick={() => setHealingUnderstanding(value)}>{label}</button>)}</div></fieldset>
+          <fieldset><legend>此刻更接近哪一种变化</legend><div className="healing-choice-row">{([['more_space','松了一点'],['clearer','更清楚'],['more_choice','多一点选择'],['unchanged','没有变化'],['worse','更难受']] as const).map(([value,label]) => <button key={value} type="button" aria-pressed={healingMovement === value} onClick={() => setHealingMovement(value)}>{label}</button>)}</div></fieldset>
+          {(feedbackVerdict === 'not_helpful' || healingUnderstanding === 'missed' || healingMovement === 'unchanged' || healingMovement === 'worse') && <fieldset><legend>哪里出了问题</legend><div className="healing-choice-row">{([['too_shallow','太浅'],['repetitive','一直重复'],['too_analytical','分析太多'],['too_generic','太泛'],['unwanted_advice','不想要建议'],['misread','理解错了'],['topic_irrelevant','话题和我无关'],['topic_not_switched','没有真正换题'],['other','其他']] as const).map(([value,label]) => <button key={value} type="button" aria-pressed={healingReason === value} onClick={() => setHealingReason(value)}>{label}</button>)}</div></fieldset>}
+        </section>}
+        <button className="primary-button" disabled={busy || !feedbackVerdict || !healingSegmentId} onClick={() => void finishHealingSession(false)}>提交并结束</button>
+        <button className="secondary-button" disabled={busy} onClick={() => void finishHealingSession(true)}>跳过反馈并结束</button>
+        <p className="settings-footnote">反馈只记录所选项目，不记录洞察或核心痛点分类。结束后仍可继续开始一段新的聊天。</p>
       </section></div>}
       {memoryCenterOpen && <MemoryCenter onClose={() => { setMemoryCenterOpen(false); settingsButtonRef.current?.focus(); }} />}
     </main>

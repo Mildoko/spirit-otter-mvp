@@ -2,6 +2,7 @@ import type { EmotionState, RiskLevel, ResponsePlan, ResponseStyleResolution } f
 import { aphorismMarkers, bannedReplyPhrases, containsDependencyLanguage, diagnosisPhrases, dryHumorMarkers, everydayMetaphorMarkers, spiritLanguage, waterMetaphorMarkers } from "../character/language-registry.js";
 import type { EmotionExpressionBrief } from "../character/emotion-expression.js";
 import type { PromptActionContext } from "../character/prompt-composer.js";
+import { renderZenStory, selectZenStory } from "../character/zen-stories.js";
 
 function contactInstruction(researchContact: string): string {
   const contact = researchContact.trim().replace(/[。；;]+$/u, "");
@@ -102,7 +103,7 @@ export function fallbackReply(input: FallbackReplyInput): { reply: string; actio
   const opening = unusedOpening(input);
   if (plan.primaryStrategy === "capability_boundary") {
     return {
-      reply: "我不是真人，我是由 AI 驱动的 tata。我可以陪你梳理感受和日常处境，但不能像心理医生那样诊断，也不能替代专业帮助。我会清楚说明自己能做和不能做的部分。",
+      reply: "我不是真人，是由 AI 驱动的鹿灵体鹿禅。我能陪你梳理感受、现实处境，也能解释一些传统文化；但不能诊断、替代专业帮助，或替你断定命运。能做与不能做的，我会直说。",
       actionDraft: null,
     };
   }
@@ -124,7 +125,15 @@ export function fallbackReply(input: FallbackReplyInput): { reply: string; actio
       actionDraft: null,
     };
   }
+  const zenStory = selectZenStory(userText);
+  if (zenStory) return { reply: renderZenStory(zenStory), actionDraft: null };
   if (plan.primaryStrategy === "answer_requested_advice") {
+    if (/(?:如何|怎么).{0,8}(?:找到|确认).{0,8}(?:最常|时刻|时候)/u.test(userText)) {
+      return {
+        reply: "可以用一个很具体的办法：先不找‘最常’，只回想最近一次出现这种感觉是在今天、昨天，还是更早。确定这一段后，再看当时正在做什么；这样比直接总结规律更容易找到真实时刻。",
+        actionDraft: null,
+      };
+    }
     const prior = recentUserAnchor(input);
     const subject = prior ? `你前面说的“${prior}”` : "这件事";
     const relationshipContext = /(?:她|他|喜欢|关系|信任|心意|感受)/u.test(prior);
@@ -132,6 +141,12 @@ export function fallbackReply(input: FallbackReplyInput): { reply: string; actio
       reply: relationshipContext
         ? `有。${subject}让你一边在意、一边又拿不准，悬在那里确实很磨人。我的建议是，先别替她的心意下结论，多看她是否持续愿意靠近、回应和投入；这些实际的东西，比星座或反复猜测更能给你方向。你可以保留喜欢，也给自己留一点不被不确定性拖着走的空间。`
         : `有。${subject}之所以让你来回想，说明它对你确实重要。我的建议是，先把你真正想保护的东西和目前能确认的事实分开看，再选一个既尊重你的感受、也给自己留有退路的方向；别让最坏的猜测替现实作答。`,
+      actionDraft: null,
+    };
+  }
+  if (plan.primaryStrategy === "guided_narrowing") {
+    return {
+      reply: "好，这次直接缩小，不再问你愿不愿意。先只看最近一次：这种感觉更接近今天、昨天，还是更早？",
       actionDraft: null,
     };
   }

@@ -43,7 +43,8 @@ describe("frozen safety corpus", () => {
   it("does not let a model-only hint escalate indirect disappearance language to imminent", () => {
     expect(resolveRiskLevel("elevated", "imminent")).toBe("elevated");
     expect(resolveRiskLevel("low", "high", { urgencyScore: 0.4, helplessnessScore: 0.6 })).toBe("low");
-    expect(resolveRiskLevel("low", "elevated", { urgencyScore: 0.7, helplessnessScore: 0.6 })).toBe("elevated");
+    expect(resolveRiskLevel("low", "elevated", { urgencyScore: 0.7, helplessnessScore: 0.6 })).toBe("low");
+    expect(resolveRiskLevel("low", "elevated", { urgencyScore: 0.7, helplessnessScore: 0.6, evidenceSpans: ["我想消失"] })).toBe("elevated");
     expect(resolveRiskLevel("high", "low")).toBe("high");
   });
 });

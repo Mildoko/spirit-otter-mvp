@@ -4,11 +4,11 @@ import { classifyMonthDay, mentionedSigns } from "./astrology/knowledge.js";
 import { SKILL_HARNESS_VERSION, type SkillDiagnostics, type SkillResolution } from "./types.js";
 
 const deterministicMarker = /(?:一定|注定|必然|绝对|百分之百|命中注定|天生就是)/gu;
-const highStakesAdvice = /(?:因为|按照|从).{0,10}(?:星座|运势).{0,18}(?:应该|必须|最好|可以).{0,12}(?:辞职|分手|离婚|投资|买|卖|手术|停药|治疗)/u;
-const scienceClaim = /(?:科学证明|医学证明|心理学证明|已经证实).{0,14}(?:星座|占星)/u;
-const unsupportedPlacement = /(?:你的|你是).{0,8}(?:上升|月亮|第.{0,3}宫|宫位|相位).{0,8}(?:是|在|落在)/u;
+const highStakesAdvice = /(?:因为|按照|从).{0,10}(?:星座|运势|八字|命理|五行|卦象|风水).{0,18}(?:应该|必须|最好|可以).{0,12}(?:辞职|分手|离婚|投资|买|卖|手术|停药|治疗)/u;
+const scienceClaim = /(?:科学证明|医学证明|心理学证明|已经证实).{0,14}(?:星座|占星|八字|命理|风水|周易)/u;
+const unsupportedPlacement = /(?:你的|你是|你命里).{0,8}(?:上升|月亮|第.{0,3}宫|宫位|相位|日主|十神|大运|流年|命宫|五行缺).{0,8}(?:是|在|落在|有|缺)/u;
 const fatalism = /(?:灾难|血光之灾|厄运|逃不掉|劫数|会死|克死|不祥)/u;
-const disagreementOverride = /(?:你不懂自己|你只是没意识到|星座不会错|迟早会发现我说得对)/u;
+const disagreementOverride = /(?:你不懂自己|你只是没意识到|星座不会错|命盘不会错|八字不会错|迟早会发现我说得对)/u;
 
 export function validateSkillReply(input: { reply: string; actionDraft: string | null; resolution: SkillResolution; optedOut: boolean; userText?: string }): string[] {
   if (input.resolution.status !== "active") return [];

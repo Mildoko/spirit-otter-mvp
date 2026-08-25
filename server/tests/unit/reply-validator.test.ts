@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { EmotionState, ResponsePlan } from "@otter/shared";
+import type { EmotionState, HealingBriefV1, ResponsePlan } from "@otter/shared";
 import { validateGeneratedReply } from "../../src/modules/character/reply-validator.js";
 import { resolveResponseStyle } from "../../src/modules/character/response-style.js";
 import { fallbackReply } from "../../src/modules/support/static-responses.js";
+import { resolveTopicLeadTurn } from "../../src/modules/topics/topic-lead.js";
+import { DEFAULT_TOPIC_LEAD_STATE } from "../../src/modules/support/guidance-state.js";
 
 const plan: ResponsePlan = {
   activeSpirit: "deep_tide", transitionStyle: "steady", supportMode: "validate", sceneState: "underwater_companion",
@@ -232,5 +234,50 @@ describe("generated reply validator", () => {
       userText: "我还想说一点", recentContext: [],
     });
     expect(result.violations.map((item) => item.code)).toContain("CONTRADICTS_USER_CORRECTION");
+  });
+
+  it("accepts the deterministic topic opener and rejects topic drift", () => {
+    const topicPlan: ResponsePlan = { ...plan, supportMode: "converse", sceneState: "surface_chat", primaryStrategy: "open_topic", forbiddenContent: ["行动", "分析无聊"] };
+    const topicStyle = resolveResponseStyle({ plan: topicPlan, state, recentContext: [], userText: "我好无聊", riskLevel: "low", interactionMode: "casual_topic" });
+    const topicLead = resolveTopicLeadTurn({
+      plan: topicPlan,
+      previous: { ...DEFAULT_TOPIC_LEAD_STATE, recentTopicIds: [], recentCategories: [] },
+      turnIndex: 1, source: "low_signal", noQuestions: false, random: () => 0,
+    })!;
+    const valid = validateGeneratedReply({ reply: topicLead.fallbackReply, actionDraft: null, plan: topicPlan, style: topicStyle, userText: "我好无聊", recentContext: [], topicLead });
+    expect(valid.hardValid, JSON.stringify(valid)).toBe(true);
+    const drifted = validateGeneratedReply({
+      reply: "这种无聊说明你缺少刺激。你可以先写下一件想做的事，然后我们整理。你想聊什么？还有别的吗？",
+      actionDraft: null, plan: topicPlan, style: topicStyle, userText: "我好无聊", recentContext: [], topicLead,
+    });
+    expect(drifted.violations.map((item) => item.code)).toEqual(expect.arrayContaining([
+      "TOPIC_ANCHOR_MISSING", "TOPIC_EMOTIONIZATION", "TOPIC_MULTIPLE_QUESTIONS", "TOPIC_ACTION_LEAK",
+    ]));
+  });
+
+  it("hard-rejects repeated healing insight, unchanged repair, and model self-justification", () => {
+    const healingBrief: HealingBriefV1 = {
+      schemaVersion: 1, status: "active", goal: "felt_seen", depth: "deepen", insight: null,
+      rupture: "none", realityPressure: "none", allowedMoves: ["具体回应"], forbiddenMoves: ["重复"], replyOutline: ["具体回应"],
+    };
+    const repeated = "也许最难的并不是事情本身，而是你已经没有多少余地继续承受它了。这里确实很重。";
+    const result = validateGeneratedReply({ reply: repeated, actionDraft: null, plan, style, userText: "还是很难受", recentContext: [`assistant: ${repeated}`], healingBrief });
+    expect(result.violations.map((item) => item.code)).toContain("REPEATED_CORE_INSIGHT");
+
+    const repairing: HealingBriefV1 = { ...healingBrief, status: "repairing", rupture: "not_helpful" };
+    const repair = validateGeneratedReply({ reply: `我刚才一直重复，确实没有推进。${repeated}`, actionDraft: null, plan: { ...plan, primaryStrategy: "rupture_repair" }, style, userText: "你一直绕圈圈", recentContext: [`assistant: ${repeated}`], healingBrief: repairing });
+    expect(repair.violations.map((item) => item.code)).toEqual(expect.arrayContaining(["REPEATED_CORE_INSIGHT", "MISSED_STRATEGY_CHANGE"]));
+
+    const defensive = validateGeneratedReply({ reply: "这说明我刚才不是凭空猜的。你现在确实有落空感。", actionDraft: null, plan, style, userText: "确实有这种感觉", recentContext: [], healingBrief });
+    expect(defensive.violations.map((item) => item.code)).toContain("MODEL_SELF_JUSTIFICATION");
+  });
+
+  it("requires guided narrowing to execute immediately without an action draft", () => {
+    const narrowingPlan: ResponsePlan = { ...plan, supportMode: "clarify", sceneState: "near_surface_transition", primaryStrategy: "guided_narrowing", routeReasonCodes: ["USER_ACCEPTED_NARROWING"] };
+    const narrowingStyle = resolveResponseStyle({ plan: narrowingPlan, state, recentContext: [], userText: "范围缩小", riskLevel: "low" });
+    const valid = validateGeneratedReply({ reply: "好，这次直接缩小。先只看最近一次：它更接近今天、昨天，还是更早？", actionDraft: null, plan: narrowingPlan, style: narrowingStyle, userText: "范围缩小", recentContext: [] });
+    expect(valid.violations.map((item) => item.code)).not.toContain("UNEXECUTED_NARROWING");
+    const invalid = validateGeneratedReply({ reply: "如果你愿意，我们可以把范围缩小一点。你想从哪里开始？", actionDraft: null, plan: narrowingPlan, style: narrowingStyle, userText: "范围缩小", recentContext: [] });
+    expect(invalid.violations.map((item) => item.code)).toContain("UNEXECUTED_NARROWING");
   });
 });

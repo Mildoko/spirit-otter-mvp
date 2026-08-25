@@ -1,4 +1,4 @@
-import type { CharacterDiagnostics, ChatTurnResponse, EmotionCorrectionLabelV1, EmotionCorrectionV1, EmotionState, MemoryDecisionV2, MemoryRelationDecisionV1, MemoryStatus, PublicEmotionFeedback, PublicEmotionInterpretation, PublicMemoryPageV2, PublicMemoryRelationV1, PublicMemoryV2, RawSignals, ResponsePlan, RiskLevel, RuntimeInfo } from "@otter/shared";
+import type { AgentIdV1, CharacterDiagnostics, ChatTurnResponse, ConversationFeedbackV2, EmotionCorrectionLabelV1, EmotionCorrectionV1, EmotionState, ExperiencePreferencesV1, MemoryDecisionV2, MemoryRelationDecisionV1, MemoryStatus, PublicEmotionFeedback, PublicEmotionInterpretation, PublicMemoryPageV2, PublicMemoryRelationV1, PublicMemoryV2, PublicPortalFeedV01, PublicPortalItemV01, RawSignals, ResponsePlan, RiskLevel, RuntimeInfo } from "@otter/shared";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -44,8 +44,9 @@ export interface BootstrapData {
   researchId: string;
   researchContact: string;
   aiReminder: string;
-  conversation: { id: string };
-  messages: Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>;
+  experiencePreferences: ExperiencePreferencesV1;
+  conversation: { id: string; activeAgentId?: AgentIdV1 };
+  messages: Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string; agentId?: AgentIdV1 }>;
   actions: Array<{ id: string; text: string; status: string; createdAt: string }>;
   followups: Array<{ id: string; actionId: string; dueAt: string; status: string; outcomeState: "not_started" | "partial_progress" | "completed" | "blocked" | "redefined"; outcomeLabeledAt: string | null; action: { id: string; text: string; status: string } }>;
   lastEmotion?: { turnId: string; interpretation: PublicEmotionInterpretation };
@@ -75,11 +76,13 @@ export interface DevEvaluation {
 
 export const api = {
   runtime: () => request<RuntimeInfo>("/runtime"),
+  publicPortalFeed: () => request<PublicPortalFeedV01>("/community/v0.1/public-feed"),
+  publicPortalItem: (id: string) => request<PublicPortalItemV01>(`/community/v0.1/public-items/${encodeURIComponent(id)}`),
   devStatus: () => request<{ localTestMode: boolean; modelConfigured: boolean; provider: string; model: string }>("/dev/status"),
   devEvaluate: (body: { text: string; currentSpirit: "deep_tide" | "shore_pick"; spiritTurnCount: number; companionLockTurns: number; recentContext: string[] }) => request<DevEvaluation>("/dev/evaluate", { method: "POST", body: JSON.stringify(body) }),
   bootstrap: () => request<BootstrapData>("/session/bootstrap"),
   redeem: (body: Record<string, unknown>) => request<{ researchId: string; conversationId: string }>("/auth/redeem-invite", { method: "POST", body: JSON.stringify(body) }),
-  turn: (body: { conversationId: string; text: string }) => request<ChatTurnResponse>("/chat/turn", {
+  turn: (body: { conversationId: string; text: string; agentId: AgentIdV1 }) => request<ChatTurnResponse>("/chat/turn", {
     method: "POST",
     headers: { "Idempotency-Key": createRequestId() },
     body: JSON.stringify(body),
@@ -91,6 +94,9 @@ export const api = {
   updateFollowup: (id: string, status: "completed" | "deferred" | "closed" | "deleted") => request(`/followups/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   labelFollowupOutcome: (id: string, state: "not_started" | "partial_progress" | "completed" | "blocked" | "redefined") => request(`/followups/${id}/outcome`, { method: "POST", body: JSON.stringify({ state, source: "ui_select" }) }),
   requestHelp: (turnId: string) => request<{ requested: boolean; contact: string }>(`/safety-events/${turnId}/request-help`, { method: "POST", body: "{}" }),
+  updateExperiencePreferences: (body: ExperiencePreferencesV1) => request<ExperiencePreferencesV1>("/me/experience-preferences", { method: "PATCH", body: JSON.stringify(body) }),
+  requestHealingFeedback: (conversationId: string) => request<{ requested: true; segmentId: string }>(`/conversations/${conversationId}/healing-feedback-requested`, { method: "POST", body: "{}" }),
+  endHealingSession: (conversationId: string, body: { segmentId: string; skipped: true } | { segmentId: string; skipped?: false; feedback: ConversationFeedbackV2 }) => request<{ ended: true; duplicate?: boolean }>(`/conversations/${conversationId}/end`, { method: "POST", body: JSON.stringify(body) }),
   memories: (status?: MemoryStatus) => request<PublicMemoryPageV2>(`/me/memories${status ? `?status=${status}` : ""}`),
   decideMemory: (id: string, decision: MemoryDecisionV2) => request<PublicMemoryV2>(`/me/memories/${id}`, { method: "PATCH", body: JSON.stringify(decision) }),
   deleteMemory: (id: string) => request<void>(`/me/memories/${id}`, { method: "DELETE" }),
@@ -105,7 +111,7 @@ export const api = {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "spirit-otter-export.json";
+    anchor.download = "luchan-export.json";
     anchor.click();
     URL.revokeObjectURL(url);
   },

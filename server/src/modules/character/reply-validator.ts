@@ -1,7 +1,8 @@
-import type { EmotionHypothesisV1, EmotionLabelV1, ResponsePlan, ResponseStyleResolution } from "@otter/shared";
+import type { EmotionHypothesisV1, EmotionLabelV1, HealingBriefV1, ResponsePlan, ResponseStyleResolution } from "@otter/shared";
 import { adviceMarkers, aphorismMarkers, bannedReplyPhrases, containsDependencyLanguage, detectDeliveredAccents, diagnosisPhrases, everydayMetaphorMarkers, mentorPhrases, waterMetaphorMarkers } from "./language-registry.js";
 import { validateSkillReply } from "../skills/harness.js";
 import type { SkillResolution } from "../skills/types.js";
+import type { TopicLeadTurn } from "../topics/topic-lead.js";
 
 export type ReplyViolationSeverity = "hard" | "soft";
 export interface ReplyViolation { code: string; severity: ReplyViolationSeverity }
@@ -38,6 +39,40 @@ function containsConcreteAction(text: string): boolean {
     || /(?:打开|写下|回复|创建).{0,18}(?:文档|邮件|消息|标题|草稿|文件|简历)/u.test(actionable);
 }
 
+function bigrams(text: string): Set<string> {
+  const compact = text.replace(/[\s，。！？、,.!?；;：“”‘’"']/gu, "");
+  return new Set(Array.from({ length: Math.max(0, compact.length - 1) }, (_, index) => compact.slice(index, index + 2)));
+}
+
+function paraphraseOnly(reply: string, userText: string): boolean {
+  const source = bigrams(userText);
+  const target = bigrams(reply);
+  if (source.size < 4 || target.size < 4) return false;
+  const overlap = [...target].filter((item) => source.has(item)).length / target.size;
+  return overlap >= 0.72 && reply.length <= userText.length * 1.35;
+}
+
+function sentences(text: string): string[] {
+  return text.split(/[。！？!?；;\n]+/u).map((part) => part.trim()).filter((part) => part.length >= 20);
+}
+
+function bigramSimilarity(left: string, right: string): number {
+  const leftSet = bigrams(left);
+  const rightSet = bigrams(right);
+  if (leftSet.size === 0 || rightSet.size === 0) return 0;
+  const intersection = [...leftSet].filter((item) => rightSet.has(item)).length;
+  const union = new Set([...leftSet, ...rightSet]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function maximumReplySimilarity(reply: string, recentReplies: string[]): number {
+  const currentSentences = sentences(reply);
+  return recentReplies.reduce((maximum, recent) => {
+    const recentSentences = sentences(recent);
+    return Math.max(maximum, ...currentSentences.flatMap((current) => recentSentences.map((prior) => bigramSimilarity(current, prior))), 0);
+  }, 0);
+}
+
 const emotionTerms: Record<EmotionLabelV1, string[]> = {
   joy: ["开心", "高兴", "喜悦"], relief: ["释然", "轻松"], hope: ["希望", "期待"], interest: ["兴趣", "好奇"], gratitude: ["感激", "感谢"],
   sadness: ["悲伤", "难过", "伤心", "委屈"], anger: ["愤怒", "生气", "恼火"], anxiety: ["焦虑", "害怕", "恐惧", "不安"],
@@ -61,6 +96,8 @@ export function validateGeneratedReply(input: {
   userText: string;
   recentContext: string[];
   skill?: SkillResolution;
+  topicLead?: TopicLeadTurn;
+  healingBrief?: HealingBriefV1;
 }): ReplyValidationResult {
   const { reply, actionDraft, plan, style } = input;
   const violations: ReplyViolation[] = [];
@@ -96,12 +133,17 @@ export function validateGeneratedReply(input: {
     && containsConcreteAction(reply)) add("UNAUTHORIZED_ACTION_IN_REPLY", "hard");
   if (actionDraft && actionDraft.length > 60) add("ACTION_TOO_LONG", "hard");
   if (actionDraft && /(?:然后|接着|同时|并且|；|;|\n\s*[-*\d])/u.test(actionDraft)) add("ACTION_BUNDLE", "hard");
-  if (plan.activeSpirit === "deep_tide" && plan.primaryStrategy !== "answer_requested_advice" && adviceMarkers.some((marker) => reply.includes(marker))) add("DEEP_TIDE_DIRECT_ADVICE", "hard");
+  if (plan.activeSpirit === "deep_tide" && plan.primaryStrategy !== "answer_requested_advice" && !input.topicLead && adviceMarkers.some((marker) => reply.includes(marker))) add("DEEP_TIDE_DIRECT_ADVICE", "hard");
   if (plan.primaryStrategy === "answer_requested_advice") {
     const answersWithAdvice = /(?:我的建议|我会建议|我更倾向|我觉得|我的看法|不妨|可以试试|可以先|先把|更值得)/u.test(reply);
     const defersAnswer = /(?:先让.{0,10}(?:落在|停在)|不把它翻译成办法|先不急着给.{0,4}建议|先不添办法|更想先陪你)/u.test(reply);
     if (!answersWithAdvice) add("REQUESTED_ADVICE_MISSING", "hard");
     if (defersAnswer) add("REQUESTED_ADVICE_DEFERRED", "hard");
+  }
+  if (plan.primaryStrategy === "guided_narrowing") {
+    if (/(?:如果你愿意|要不要|愿不愿意|是否愿意).{0,18}(?:缩小|范围|整理)/u.test(reply)
+      || !/(?:最近一次|今天|昨天|更早|当时|地点|谁在|正在做|前十分钟|只看|只选)/u.test(reply)) add("UNEXECUTED_NARROWING", "hard");
+    if (actionDraft !== null) add("UNAUTHORIZED_ACTION", "hard");
   }
   if (["invite_one_small_action", "clarify_then_invite"].includes(plan.primaryStrategy)) {
     const hasActionLeak = /(?:打开|写下|回复).{0,18}(?:邮件|文档|一句|开头)/u.test(reply) || /(?:先做|第一步).{0,12}(?:是|：|:|可以)/u.test(reply) || /(?:动作|一步).{0,12}(?:是|可以是|试试)/u.test(reply);
@@ -121,6 +163,32 @@ export function validateGeneratedReply(input: {
     if (!/(?:我不是真人|我是.{0,8}AI|由 AI 驱动|人工智能)/iu.test(reply)) add("CAPABILITY_DISCLOSURE_MISSING", "hard");
     if (!/(?:不能|无法|不会).{0,8}(?:诊断|确诊)|不能替代.{0,8}(?:医生|心理医生|专业)/u.test(reply)) add("DIAGNOSIS_BOUNDARY_MISSING", "hard");
   }
+  if (input.topicLead) {
+    if (input.topicLead.phase !== "continue" && (reply.length < 28 || /^(?:那|你想|想聊|要不要).{0,24}[？?]$/u.test(reply.trim()))) add("TOPIC_NOT_OPENED", "hard");
+    if (!input.topicLead.card.anchorKeywords.some((anchor) => reply.includes(anchor))) add("TOPIC_ANCHOR_MISSING", "hard");
+    if (/(?:你之所以|你会觉得|无聊背后|这种无聊|说明你).{0,16}(?:无聊|情绪|需要|缺少|逃避)/u.test(reply)) add("TOPIC_EMOTIONIZATION", "hard");
+    if (questionCount > 1) add("TOPIC_MULTIPLE_QUESTIONS", "hard");
+    if (actionDraft !== null || containsConcreteAction(reply)) add("TOPIC_ACTION_LEAK", "hard");
+    if (input.topicLead.phase === "switch" && (input.topicLead.previousTopicId === input.topicLead.card.id || input.topicLead.previousCategory === input.topicLead.card.category)) add("TOPIC_REPEATED_AFTER_REJECTION", "hard");
+  }
+  if (input.healingBrief?.status !== undefined && input.healingBrief.status !== "inactive") {
+    const healing = input.healingBrief;
+    if (paraphraseOnly(reply, input.userText) || /(?:钱的事就是钱的事|难处就是难处|你很难所以很难受)/u.test(reply)) add("PARAPHRASE_ONLY", "hard");
+    if (/(?:至少不用一个人扛|至少有人听|我会一直陪|我会陪着你|你不是一个人)(?:[。！!]|$)/u.test(reply)) add("EMPTY_COMPANIONSHIP", "hard");
+    if (/(?:愿意说出来|说出来本身).{0,12}(?:出口|成长|勇敢|改变)|(?:这也是|也算是).{0,8}(?:成长|进步|好事)|凡事都有/u.test(reply)) add("UNSUPPORTED_POSITIVE_REFRAME", "hard");
+    if (/(?:治愈你|治疗你|疗效|保证.{0,8}(?:好起来|改善|有效)|作为你的治疗师)/u.test(reply)) add("THERAPY_OR_DIAGNOSIS_CLAIM", "hard");
+    const interpretationCount = countMatches(reply, /(?:可能|也许|是不是|会不会|背后(?:是|有)|说明你)/gu);
+    if (interpretationCount > 2) add("MULTIPLE_CORE_INTERPRETATIONS", "hard");
+    if (healing.insight) {
+      const evidenceBigrams = new Set(healing.insight.evidenceSpans.flatMap((span) => [...bigrams(span)]));
+      if (evidenceBigrams.size > 0 && ![...bigrams(reply)].some((item) => evidenceBigrams.has(item))) add("UNSUPPORTED_DEEP_INSIGHT", "hard");
+    }
+    if (healing.status === "repairing" && !/(?:你说得对|我刚才|刚才那句|是我).{0,24}(?:说轻了|说空了|没说到|理解错|说偏了|没有说到|用了.{0,4}安慰|重复|绕圈|没推进|没有换)/u.test(reply)) add("MISSED_RUPTURE_REPAIR", "hard");
+    if (healing.realityPressure !== "none" && !/(?:工资|生活费|房租|钱|基本生活|收入|失业|住房|借钱|开支|缺口|确定性)/u.test(reply)) add("MISSED_MATERIAL_STAKES", "hard");
+    if (healing.status === "active" && !healing.insight && !/(?:不等于|不需要|不是.{0,8}而是|有理由|可以先|如果你愿意|允许|值得|现实|具体)/u.test(reply)) add("HEALING_MOVEMENT_MISSING", "soft");
+    if (!["answer_requested_advice", "one_small_action", "material_crisis_support"].includes(plan.primaryStrategy) && containsConcreteAction(reply)) add("PREMATURE_SOLUTION", "hard");
+  }
+  if (/(?:说明|证明).{0,8}(?:我|刚才).{0,10}(?:不是凭空猜|猜对了|理解得没错)|我刚才.{0,8}(?:没猜错|说对了)/u.test(reply)) add("MODEL_SELF_JUSTIFICATION", "hard");
   if (deliveredAccents.length > 1) add("MULTIPLE_EXPRESSIVE_ACCENTS", "hard");
   if (style.profile.expressiveAccent === "none" && deliveredAccents.length > 0) add("EXPRESSIVE_ACCENT_FORBIDDEN", "hard");
   if (deliveredAccents.length === 1 && deliveredAccents[0] !== style.profile.expressiveAccent) add("EXPRESSIVE_ACCENT_MISMATCH", "hard");
@@ -129,12 +197,16 @@ export function validateGeneratedReply(input: {
   if (sentenceCount > 5 || reply.length > 500) add("REPLY_TOO_LONG", "hard");
   if (sentenceCount < 2) add("REPLY_TOO_BRIEF", "soft");
 
-  const recentReplies = input.recentContext.filter((item) => item.startsWith("assistant:")).slice(-3).map((item) => item.replace(/^assistant:\s*/iu, ""));
+  const recentReplies = input.recentContext.filter((item) => item.startsWith("assistant:")).slice(-6).map((item) => item.replace(/^assistant:\s*/iu, ""));
+  const repeatedSimilarity = maximumReplySimilarity(reply, recentReplies);
+  if (input.healingBrief?.status !== undefined && input.healingBrief.status !== "inactive" && repeatedSimilarity >= 0.78) add("REPEATED_CORE_INSIGHT", "hard");
+  const immediatelyPreviousReply = recentReplies.at(-1);
+  if (input.healingBrief?.status === "repairing" && immediatelyPreviousReply && maximumReplySimilarity(reply, [immediatelyPreviousReply]) > 0.55) add("MISSED_STRATEGY_CHANGE", "hard");
   const opening = firstClause(reply);
   if (opening.length >= 4 && recentReplies.some((item) => firstClause(item) === opening)) add("REPEATED_OPENING", "soft");
   if (style.avoidPhrases.some((phrase) => phrase !== "连续比喻" && phrase !== "连续提问" && reply.includes(phrase))) add("RECENT_PATTERN_REUSED", "soft");
   const anchors = meaningfulAnchors(input.userText);
-  if (anchors.length > 0 && !anchors.some((anchor) => reply.includes(anchor))) add("MISSING_CONCRETE_ANCHOR", "soft");
+  if (!input.topicLead && anchors.length > 0 && !anchors.some((anchor) => reply.includes(anchor))) add("MISSING_CONCRETE_ANCHOR", "soft");
   if (deliveredAccents.includes("metaphor") && !/(?:堵|压|挤|空|乱|卡|沉|重|累|电量|脑子|任务|工作)/u.test(input.userText)) add("UNANCHORED_METAPHOR", "soft");
   if (deliveredAccents.includes("aphorism") && (mentorPhrases.some((phrase) => reply.includes(phrase)) || !/(?:一边|既|又|但|可是|矛盾)/u.test(input.userText))) add("UNSUPPORTED_APHORISM", "soft");
   if (aphorismMarkers.some((marker) => recentReplies.some((recent) => recent.includes(marker)) && reply.includes(marker))) add("REPEATED_APHORISM", "soft");

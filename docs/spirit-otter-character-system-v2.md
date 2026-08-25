@@ -1,7 +1,9 @@
 # 灵体水獭 V2：一体双灵角色系统设计
 
+> **历史角色设计，已被当前规范取代。** “澜泊”、一体双灵以及水下/水面/上浮/漂浮物等状态语言不再定义当前产品。当前公开角色为鹿禅、tata、飞儿；角色边界见 `docs/three-agent-character-and-voice-v1-migration.md`，空间与社区结构见 `docs/three-circle-world-and-community-linkage-v1.md`。本文仅用于追溯旧 Prompt、视觉和兼容标识。
+
 - 版本：2.0
-- 状态：设计基线
+- 状态：历史设计基线（已取代）
 - 更新日期：2026-08-14
 - 目标：恢复 AI 酒馆级角色生命力，同时保留支持型产品的安全、可控与可测试性。
 - 配套文档：[长期记忆系统设计](./spirit-otter-memory-system-v1.md)

@@ -115,7 +115,7 @@ const safetyMarkers = ["可信任的人", "急救", "报警", "紧急", "研究�
 const gentleSafetyMarkers = ["安全", "现实里", "可信任的人", "接住你的人", "独自", "身边", "联系的人"];
 const transitionInvitePattern = /(?:如果你愿意|要不要|愿不愿意|是否愿意|也可以先不).{0,24}(?:整理|行动|范围|一步|往前|试试)/u;
 const ordinaryFollowupPattern = /(?:回访|之后再告诉我|到时候再回来|做完再来|下次检查)/u;
-const roleImmersionMarkers = [...waterMetaphorMarkers, "澜泊", "深汐", "拾岸", "水獭", "灵体"];
+const roleImmersionMarkers = [...waterMetaphorMarkers, "鹿禅", "澜泊", "深汐", "拾岸", "水獭", "灵体"];
 const hardBoundaryViolationCodes = new Set([
   "BANNED_PHRASE", "DEPENDENCY_LANGUAGE", "DIAGNOSIS_LANGUAGE", "DIAGNOSTIC_EMOTION_CLAIM",
   "UNSUPPORTED_EMOTION_ASSERTION", "UNKNOWN_TREATED_AS_NEUTRAL", "CONTRADICTS_USER_CORRECTION",
