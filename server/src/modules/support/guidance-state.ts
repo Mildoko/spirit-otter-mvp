@@ -189,12 +189,11 @@ export interface GuidanceIntent {
   requestTopicStop: boolean;
 }
 
-export function advanceGuidanceState(input: {
+export interface AdvanceGuidanceStateInput {
   previous: GuidanceState;
   intent: GuidanceIntent;
   signals: RawSignals;
   plan: ResponsePlan;
-  finalReply: string;
   deliveredAccent: ExpressiveAccent;
   topicSkill?: TopicSkillGuidanceStateV1;
   topicLead?: TopicLeadGuidanceStateV1;
@@ -202,7 +201,10 @@ export function advanceGuidanceState(input: {
   deepAnalysisEnabled?: boolean;
   resetHealing?: boolean;
   now?: Date;
-}): GuidanceStateV4 {
+  segmentIdFactory?: () => string;
+}
+
+export function advanceGuidanceState(input: AdvanceGuidanceStateInput): GuidanceStateV4 {
   const previous = parseGuidanceState(input.previous);
   const turnIndex = input.previous.turnIndex + 1;
   const clarification = ["clarify_low_signal", "clarify_then_invite"].includes(input.plan.primaryStrategy);
@@ -220,7 +222,7 @@ export function advanceGuidanceState(input: {
   const healingBrief = input.healingBrief;
   const healingExpired = previous.healing.expiresAt !== null && new Date(previous.healing.expiresAt).getTime() <= now.getTime();
   const previousHealing = healingExpired
-    ? { ...DEFAULT_HEALING_STATE, segmentId: `segment-${randomUUID()}`, deepAnalysisEnabled: previous.healing.deepAnalysisEnabled }
+    ? { ...DEFAULT_HEALING_STATE, segmentId: input.segmentIdFactory?.() ?? `segment-${randomUUID()}`, deepAnalysisEnabled: previous.healing.deepAnalysisEnabled }
     : previous.healing;
   const nextHealing: HealingGuidanceStateV1 = input.resetHealing || input.plan.sceneState === "safety_plain"
     ? { ...DEFAULT_HEALING_STATE, segmentId: previousHealing.segmentId, deepAnalysisEnabled: input.deepAnalysisEnabled ?? previousHealing.deepAnalysisEnabled }

@@ -68,4 +68,29 @@ describe("core dialogue release decision", () => {
     expect(report.decision).toBe("hold");
     expect(report.reasons).toContain("证据完整性：core-dialogue-eval 来自 old-sha");
   });
+
+  it("does not require P1 artifacts while every migration mode is legacy", () => {
+    const report = decideCoreDialogueRelease({
+      evalStatus: "passed", eventAuditStatus: "passed", productMetricsStatus: "valid", evidenceIntegrity,
+      manualReview: acceptedReview,
+      voluntaryFeedbackGate: { schemaVersion: "voluntary-feedback-gate-v1", status: "passed", completedSegments: 50 },
+      p1: { modes: { structuredOutput: "legacy", guidance: "legacy", action: "legacy", followup: "legacy" } },
+    });
+    expect(report.decision).toBe("release");
+  });
+
+  it("holds new P1 modes when current-SHA evidence is missing or blocked", () => {
+    const report = decideCoreDialogueRelease({
+      evalStatus: "passed", eventAuditStatus: "passed", productMetricsStatus: "valid", evidenceIntegrity,
+      manualReview: acceptedReview,
+      voluntaryFeedbackGate: { schemaVersion: "voluntary-feedback-gate-v1", status: "passed", completedSegments: 50 },
+      p1: {
+        modes: { structuredOutput: "new", guidance: "new", action: "legacy", followup: "legacy" },
+        structuredOutputStatus: "missing", stateParityStatus: "passed", promptRegressionStatus: "blocked",
+      },
+    });
+    expect(report.decision).toBe("hold");
+    expect(report.reasons).toContain("Structured Output 新模式证据为 missing");
+    expect(report.reasons).toContain("Promptfoo 新模式证据为 blocked");
+  });
 });

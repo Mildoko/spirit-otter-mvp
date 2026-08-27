@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -18,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.22.0
           cache: npm
       - run: npm ci
       - run: npm run db:generate
@@ -26,7 +29,11 @@ jobs:
       - run: npm test
       - run: npm run test:experience
       - run: npm run test:eval:core
+      - run: npm run test:eval:healing
       - run: npm run test:eval:skill:astrology
+      - run: npm run promptfoo:validate
+      - run: npm run test:promptfoo:offline
+      - run: npm run report:prompt-regression
       - run: npm run build
       - name: Upload failure diagnostics
         if: failure()
@@ -65,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22.22.0, cache: npm }
       - run: npm ci
       - run: npm run db:generate
       - run: npm run db:deploy -w @otter/server
@@ -74,16 +81,13 @@ jobs:
   demo-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      E2E_MODE: demo
-      E2E_BASE_URL: http://localhost:3001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22.22.0, cache: npm }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npm run test:e2e:demo
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

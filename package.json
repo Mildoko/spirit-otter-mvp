@@ -55,15 +55,25 @@
     ,"test:healing": "npm run test:healing -w @otter/server"
     ,"test:eval:healing": "npm run test:eval:healing -w @otter/server"
     ,"review:healing": "npm run review:healing -w @otter/server"
+    ,"report:structured-capability": "npm run build -w @otter/server && npm run report:structured-capability -w @otter/server"
+    ,"report:structured-ab": "npm run build -w @otter/server && npm run report:structured-ab -w @otter/server"
+    ,"report:state-parity": "npm run build -w @otter/server && npm run report:state-parity -w @otter/server"
+    ,"promptfoo:validate": "npm run build -w @otter/server && node node_modules/cross-env/dist/bin/cross-env.js PROMPTFOO_CONFIG_DIR=test-results/.promptfoo PROMPTFOO_DISABLE_TELEMETRY=true PROMPTFOO_DISABLE_SHARING=true PROMPTFOO_DISABLE_REMOTE_GENERATION=true node node_modules/promptfoo/dist/src/entrypoint.js validate -c promptfoo/promptfooconfig.mjs"
+    ,"test:promptfoo:offline": "npm run build -w @otter/server && node node_modules/cross-env/dist/bin/cross-env.js PROMPTFOO_CONFIG_DIR=test-results/.promptfoo PROMPTFOO_DISABLE_TELEMETRY=true PROMPTFOO_OFFLINE=true PROMPTFOO_DISABLE_SHARING=true PROMPTFOO_DISABLE_REMOTE_GENERATION=true node node_modules/promptfoo/dist/src/entrypoint.js eval -c promptfoo/promptfooconfig.mjs --no-share --no-cache --max-concurrency 2 --output test-results/promptfoo-offline.json"
+    ,"test:promptfoo:model": "npm run build -w @otter/server && node node_modules/cross-env/dist/bin/cross-env.js PROMPTFOO_CONFIG_DIR=test-results/.promptfoo PROMPTFOO_DISABLE_TELEMETRY=true PROMPTFOO_OFFLINE=false PROMPTFOO_DISABLE_SHARING=true PROMPTFOO_DISABLE_REMOTE_GENERATION=true node node_modules/promptfoo/dist/src/entrypoint.js eval -c promptfoo/promptfooconfig.mjs --no-share --no-cache --max-concurrency 2 --output test-results/promptfoo-model.json"
+    ,"report:prompt-regression": "npm run build -w @otter/server && npm run report:prompt-regression -w @otter/server"
+    ,"report:p1-legacy-baseline": "npm run build -w @otter/server && npm run report:p1-legacy-baseline -w @otter/server"
     ,"test:e2e:demo": "node scripts/run-demo-e2e.mjs"
     ,"test:e2e:full": "node scripts/run-full-e2e.mjs"
     ,"prepackage:testable": "npm run typecheck && npm test && npm run test:healing && npm run test:eval:core && npm run test:eval:healing && npm run test:eval:skill:astrology && npm run test:integration && npm run test:e2e:demo && npm run test:e2e:full && npm run test:model"
     ,"package:testable": "node scripts/package-testable.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0"
+    "concurrently": "^9.2.0",
+    "cross-env": "^10.0.0",
+    "promptfoo": "0.122.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.22.0"
   }
 }

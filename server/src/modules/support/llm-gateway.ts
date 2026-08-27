@@ -1,10 +1,11 @@
 import OpenAI from "openai";
-import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
 import type { HealingBriefV1, MemoryCandidate, MemoryRelationCandidateV1, PromptMemory, ProviderCapabilities, RawSignals } from "@otter/shared";
 import type { AppEnv } from "../../config/env.js";
 import { memoryExtractionSchema } from "../memory/schemas.js";
 import { generatedReplySchema, healingCritiqueSchema, rawSignalsSchema, rawSignalsWithEmotionSchema } from "./schemas.js";
 import { noOpAiTelemetry, type AiTelemetry } from "../../observability/ai-telemetry.js";
+import { resolveStructuredOutputContract } from "./structured-output.js";
+import { executeStructuredTransport, validateStructuredPayload } from "./structured-transport.js";
 
 export interface LlmMetrics {
   provider: string;
@@ -38,9 +39,16 @@ export interface HealingCritique {
 
 export type LlmFailureReason = "timeout" | "empty_response" | "invalid_json" | "schema_error" | "provider_error";
 export type LlmOperation = "analyze" | "generate" | "repair" | "critique_healing" | "extract_memories";
+export type StructuredOutputTransport = "legacy_json_object" | "responses_json_schema" | "chat_json_schema";
 export interface LlmFailureDiagnostic {
   reason: LlmFailureReason;
   detail: string | null;
+}
+
+export function preferredStructuredOutputTransport(input: Pick<AppEnv, "LLM_PROVIDER" | "LLM_MODEL">): Exclude<StructuredOutputTransport, "legacy_json_object"> {
+  return input.LLM_PROVIDER.toLowerCase() === "deepseek" && input.LLM_MODEL !== "deepseek-v4-flash"
+    ? "chat_json_schema"
+    : "responses_json_schema";
 }
 
 type JsonCallOutcome<T> =
@@ -110,11 +118,12 @@ export class LlmGateway {
   private _lastFailureReason: LlmFailureReason | null = null;
   private _lastFailureDetail: string | null = null;
   private readonly _lastFailures: Partial<Record<LlmOperation, LlmFailureDiagnostic | null>> = {};
+  private structuredTransportOverride: Exclude<StructuredOutputTransport, "legacy_json_object"> | null = null;
 
-  constructor(private readonly env: AppEnv, private readonly telemetry: AiTelemetry = noOpAiTelemetry) {
+  constructor(private readonly env: AppEnv, readonly telemetry: AiTelemetry = noOpAiTelemetry) {
     this.capabilities = {
       jsonMode: env.LLM_JSON_MODE,
-      structuredOutput: false,
+      structuredOutput: env.LLM_STRUCTURED_OUTPUT_MODE !== "legacy",
       streaming: false,
       usageMetadata: true,
     };
@@ -189,6 +198,40 @@ export class LlmGateway {
     const result = await this.callJsonWithRetry("generate", prompt.system, prompt.user, generatedReplySchema, 1000);
     this.recordOutcome("generate", result);
     return result.ok ? { ...result.data, metrics: result.metrics } : null;
+  }
+
+  async probeStructuredOutput(): Promise<{ status: "supported" | "unsupported" | "invalid"; reason: string | null; transport: Exclude<StructuredOutputTransport, "legacy_json_object"> | null; usageMetadata: boolean }> {
+    if (!this.client) return { status: "unsupported", reason: "not_configured", transport: null, usageMetadata: false };
+    if (this.env.LLM_STRUCTURED_OUTPUT_MODE !== "new") return { status: "invalid", reason: "structured_output_mode_not_new", transport: null, usageMetadata: false };
+    const preferred = preferredStructuredOutputTransport(this.env);
+    const candidates = [preferred, preferred === "responses_json_schema" ? "chat_json_schema" : "responses_json_schema"] as const;
+    const contract = resolveStructuredOutputContract("generate");
+    const unsupportedReasons: string[] = [];
+    for (const transport of candidates) {
+      const result = await executeStructuredTransport({
+        client: this.client,
+        transport,
+        provider: this.env.LLM_PROVIDER,
+        model: this.env.LLM_MODEL,
+        system: "这是结构化输出能力探针。只处理合成内容并严格遵守 Schema。",
+        user: "合成测试：请返回一条简短回复，不创建行动。",
+        maxTokens: 120,
+        jsonMode: true,
+        contract,
+      });
+      if (result.data) {
+        const validated = validateStructuredPayload(result.data, contract.zodSchema);
+        if (!validated.failure) {
+          this.structuredTransportOverride = transport;
+          return { status: "supported", reason: null, transport, usageMetadata: result.metrics.promptTokens !== undefined && result.metrics.outputTokens !== undefined };
+        }
+        return { status: "invalid", reason: validated.failure?.reason ?? "schema_error", transport, usageMetadata: false };
+      }
+      const unsupported = result.failure?.reason === "provider_error" && /^http_(?:400|404|422)(?::|$)/u.test(result.failure.detail ?? "");
+      if (!unsupported) return { status: "invalid", reason: result.failure?.detail ?? result.failure?.reason ?? "unknown_probe_failure", transport, usageMetadata: false };
+      unsupportedReasons.push(`${transport}:${result.failure?.detail ?? "unsupported"}`);
+    }
+    return { status: "unsupported", reason: unsupportedReasons.join(","), transport: null, usageMetadata: false };
   }
 
   async critiqueHealing(input: { userText: string; reply: string; brief: HealingBriefV1 }): Promise<HealingCritique | null> {
@@ -274,6 +317,10 @@ export class LlmGateway {
     if (!this.client) return { ok: false, failure: { reason: "provider_error", detail: "not_configured" } };
     let retryInstruction = "";
     let failure: LlmFailureDiagnostic = { reason: "provider_error", detail: null };
+    const transport: StructuredOutputTransport = this.env.LLM_STRUCTURED_OUTPUT_MODE === "new"
+      ? this.structuredTransportOverride ?? preferredStructuredOutputTransport(this.env)
+      : "legacy_json_object";
+    const outputContract = resolveStructuredOutputContract(operation, operation === "analyze" && schema === rawSignalsWithEmotionSchema);
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const started = Date.now();
       const traceSpan = this.telemetry.startModelCall({
@@ -281,51 +328,34 @@ export class LlmGateway {
         provider: this.env.LLM_PROVIDER,
         model: this.env.LLM_MODEL,
         attempt: attempt + 1,
+        transport,
+        schemaId: outputContract.schemaId,
       });
       try {
-        const requestBody: ChatCompletionCreateParamsNonStreaming & { thinking?: { type: "disabled" } } = {
-          model: this.env.LLM_MODEL,
-          messages: [
-            { role: "system", content: `${system}${retryInstruction}` },
-            { role: "user", content: user },
-          ],
-          ...(this.capabilities.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
-          temperature: 0.2,
-          max_tokens: maxTokens,
-        };
-        if (this.env.LLM_PROVIDER.toLowerCase() === "deepseek") {
-          Object.assign(requestBody, { thinking: { type: "disabled" } });
-        }
-        const response = await this.client.chat.completions.create(requestBody);
-        const content = response.choices[0]?.message.content;
-        if (!content) {
-          failure = { reason: "empty_response", detail: null };
+        const transported = await executeStructuredTransport({
+          client: this.client, transport, provider: this.env.LLM_PROVIDER, model: this.env.LLM_MODEL,
+          system: `${system}${retryInstruction}`, user, maxTokens, jsonMode: this.capabilities.jsonMode, contract: outputContract,
+        });
+        if (transported.failure || !transported.data) {
+          failure = transported.failure ?? { reason: "empty_response", detail: null };
           traceSpan.finish({ outcome: "failure", failureReason: failure.reason, latencyMs: Date.now() - started });
           continue;
         }
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(content);
-        } catch {
-          failure = { reason: "invalid_json", detail: null };
+        const validated = validateStructuredPayload(transported.data, schema);
+        if (validated.failure || !validated.data) {
+          failure = validated.failure ?? { reason: "schema_error", detail: null };
           traceSpan.finish({ outcome: "failure", failureReason: failure.reason, latencyMs: Date.now() - started });
-          retryInstruction = "\n\n上一轮不是合法 JSON。重新输出一个完整 JSON 对象，不要 Markdown、解释或代码围栏。";
-          continue;
-        }
-        const validated = schema.safeParse(parsed);
-        if (!validated.success) {
-          const detail = validated.error?.issues?.slice(0, 4).map((issue) => `${issue.path.join(".")}:${issue.message}`).join("; ") ?? null;
-          failure = { reason: "schema_error", detail };
-          traceSpan.finish({ outcome: "failure", failureReason: failure.reason, latencyMs: Date.now() - started });
-          retryInstruction = `\n\n上一轮 JSON 未通过 Schema：${detail ?? "字段不合法"}。修正这些字段后重新输出完整 JSON；枚举值只能使用上文允许值。`;
+          retryInstruction = failure.reason === "invalid_json"
+            ? "\n\n上一轮不是合法 JSON。重新输出一个完整 JSON 对象，不要 Markdown、解释或代码围栏。"
+            : `\n\n上一轮 JSON 未通过 Schema：${failure.detail ?? "字段不合法"}。修正这些字段后重新输出完整 JSON；枚举值只能使用上文允许值。`;
           continue;
         }
         const metrics: LlmMetrics = {
           provider: this.env.LLM_PROVIDER,
           model: this.env.LLM_MODEL,
           latencyMs: Date.now() - started,
-          ...(response.usage?.prompt_tokens !== undefined ? { promptTokens: response.usage.prompt_tokens } : {}),
-          ...(response.usage?.completion_tokens !== undefined ? { outputTokens: response.usage.completion_tokens } : {}),
+          ...(transported.metrics.promptTokens !== undefined ? { promptTokens: transported.metrics.promptTokens } : {}),
+          ...(transported.metrics.outputTokens !== undefined ? { outputTokens: transported.metrics.outputTokens } : {}),
         };
         traceSpan.finish({
           outcome: "success",

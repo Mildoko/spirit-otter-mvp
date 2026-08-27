@@ -91,13 +91,15 @@ export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependenc
     registerAuthRoutes(app, db, env);
     registerSessionRoutes(app, db, env);
     registerChatRoutes(app, db, env, orchestrator);
-    registerActionRoutes(app, db, env);
-    registerFollowupRoutes(app, db, env);
+    registerActionRoutes(app, db, env, aiTelemetry);
+    registerFollowupRoutes(app, db, env, aiTelemetry);
     registerMeRoutes(app, db, env);
     registerHealingRoutes(app, db, env);
     registerSafetyRoutes(app, db, env);
   } else if (env.OTTER_RUNTIME_MODE === "demo") {
-    registerDemoRoutes(app, env, orchestrator, dependencies.demoStore ?? new DemoStore());
+    const demoStore = dependencies.demoStore ?? new DemoStore();
+    demoStore.configureStateEngines({ action: env.ACTION_ENGINE_MODE, followup: env.FOLLOWUP_ENGINE_MODE, telemetry: aiTelemetry });
+    registerDemoRoutes(app, env, orchestrator, demoStore);
   } else {
     registerHealthRoute(app, db);
     registerDevRoutes(app, env, orchestrator);

@@ -203,7 +203,7 @@ export function fallbackReply(input: FallbackReplyInput): { reply: string; actio
     }
     return {
       reply: plan.transitionStyle === "blend_to_shore" && !plan.allowActionDraft
-        ? `${quoted}一下子全挤在眼前，确实很难找到开头。先不急着列清单，我们只辨认眼下最卡住你的那一处。`
+        ? `${quoted}一下子全挤在眼前，确实很难找到开头。如果你愿意，我可以陪你只辨认眼下最卡住的那一处；也可以先不整理。`
         : `${opening}${quoted}不用一下子处理完。${accent}${actionDraft ? `我们只定这一件：${actionDraft}。范围不合适还可以再改。` : "先只找一个十分钟内能动手、也可以放弃的小动作。"}`,
       actionDraft,
     };

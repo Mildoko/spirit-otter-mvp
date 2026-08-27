@@ -25,6 +25,10 @@ import { applyMemoryBudget, rankMemories, type RecallCandidate } from "../module
 import { filterMemoryCandidates, filterMemoryRelationCandidates } from "../modules/memory/guard.js";
 import { resolveEventTime } from "../modules/memory/temporal.js";
 import { createDefaultGuidanceState } from "../modules/support/guidance-state.js";
+import type { AiTelemetry } from "../observability/ai-telemetry.js";
+import { resolveActionTransition } from "../state-machines/action-transition.js";
+import { resolveFollowupTransition } from "../state-machines/followup-transition.js";
+import type { FollowupOutcomeState } from "../followups/outcome-state.js";
 
 export interface DemoStateEntry {
   raw: EmotionState;
@@ -83,6 +87,11 @@ interface DemoMemoryRelation {
 }
 
 export class DemoStore {
+  private stateEngines: {
+    action: "legacy" | "shadow" | "new";
+    followup: "legacy" | "shadow" | "new";
+    telemetry?: AiTelemetry;
+  } = { action: "legacy", followup: "legacy" };
   readonly conversationId = "demo-conversation";
   readonly researchId = "DEMO-LOCAL";
   lastVisitAt: string | undefined;
@@ -102,6 +111,16 @@ export class DemoStore {
   private memories: DemoMemory[] = [];
   private memoryRelations: DemoMemoryRelation[] = [];
   private safetyTurns = new Set<string>();
+
+  configureStateEngines(config: typeof this.stateEngines): void {
+    this.stateEngines = config;
+  }
+
+  forkEmpty(): DemoStore {
+    const store = new DemoStore();
+    store.configureStateEngines(this.stateEngines);
+    return store;
+  }
 
   reset(): void {
     this.lastVisitAt = undefined;
@@ -365,18 +384,26 @@ export class DemoStore {
 
   confirmAction(id: string, decision: "confirm" | "abandon", text?: string): PublicActionItem {
     const action = this.requireAction(id);
-    if (action.status !== "draft") throw Object.assign(new Error("行动已经处理"), { statusCode: 409, code: "ACTION_CLOSED" });
-    action.status = decision === "confirm" ? "confirmed" : "deleted";
+    const transition = resolveActionTransition({
+      mode: this.stateEngines.action, status: action.status,
+      event: { type: decision === "confirm" ? "CONFIRM" : "ABANDON" }, telemetry: this.stateEngines.telemetry,
+    });
+    if (!transition.accepted) throw Object.assign(new Error("行动已经处理"), { statusCode: 409, code: "ACTION_CLOSED" });
+    action.status = transition.state;
     if (decision === "confirm" && text?.trim()) action.text = text.trim();
     return action;
   }
 
   updateAction(id: string, status: Extract<ActionStatus, "completed" | "deferred" | "deleted">): PublicActionItem {
     const action = this.requireAction(id);
-    if (action.status === "draft" || action.status === "deleted") {
+    const transition = resolveActionTransition({
+      mode: this.stateEngines.action, status: action.status,
+      event: { type: status === "completed" ? "COMPLETE" : status === "deferred" ? "DEFER" : "DELETE" }, telemetry: this.stateEngines.telemetry,
+    });
+    if (!transition.accepted) {
       throw Object.assign(new Error("可更新的行动不存在"), { statusCode: 404, code: "NOT_FOUND" });
     }
-    action.status = status;
+    action.status = transition.state;
     return action;
   }
 
@@ -398,10 +425,17 @@ export class DemoStore {
 
   updateFollowup(id: string, status: PublicFollowup["status"]): PublicFollowup {
     const followup = this.followups.find((item) => item.id === id);
-    if (!followup || ["closed", "deleted"].includes(followup.status)) {
+    if (!followup) {
       throw Object.assign(new Error("回访不存在"), { statusCode: 404, code: "NOT_FOUND" });
     }
-    followup.status = status;
+    const transition = resolveFollowupTransition({
+      mode: this.stateEngines.followup, status: followup.status, outcomeState: followup.outcomeState,
+      outcomeLabeled: Boolean(followup.outcomeLabeledAt),
+      event: { type: status === "completed" ? "COMPLETE" : status === "deferred" ? "DEFER" : status === "closed" ? "CLOSE" : "DELETE" },
+      telemetry: this.stateEngines.telemetry,
+    });
+    if (!transition.accepted) throw Object.assign(new Error("回访不存在"), { statusCode: 404, code: "NOT_FOUND" });
+    followup.status = transition.state.status;
     return followup;
   }
 
@@ -410,15 +444,20 @@ export class DemoStore {
     if (!followup || followup.status === "deleted") {
       throw Object.assign(new Error("回访不存在"), { statusCode: 404, code: "NOT_FOUND" });
     }
-    if (followup.outcomeLabeledAt && followup.outcomeState === state) {
+    const transition = resolveFollowupTransition({
+      mode: this.stateEngines.followup, status: followup.status, outcomeState: followup.outcomeState as FollowupOutcomeState,
+      outcomeLabeled: Boolean(followup.outcomeLabeledAt), event: { type: "LABEL_OUTCOME", state }, telemetry: this.stateEngines.telemetry,
+    });
+    if (!transition.accepted && followup.outcomeLabeledAt && followup.outcomeState === state) {
       throw Object.assign(new Error("回访结果没有变化"), { statusCode: 409, code: "FOLLOWUP_OUTCOME_UNCHANGED" });
     }
-    if (followup.outcomeState === "completed" && state !== "completed") {
+    if (!transition.accepted && followup.outcomeState === "completed" && state !== "completed") {
       throw Object.assign(new Error("已完成的回访结果不能改回其他状态"), { statusCode: 409, code: "INVALID_FOLLOWUP_OUTCOME_TRANSITION" });
     }
-    followup.outcomeState = state;
+    if (!transition.accepted) throw Object.assign(new Error("回访结果转换无效"), { statusCode: 409, code: "INVALID_FOLLOWUP_OUTCOME_TRANSITION" });
+    followup.outcomeState = transition.state.outcomeState;
     followup.outcomeLabeledAt = new Date().toISOString();
-    followup.status = state === "completed" ? "completed" : "closed";
+    followup.status = transition.state.status;
     if (state === "completed") followup.action.status = "completed";
     else if (followup.action.status === "confirmed") followup.action.status = "deferred";
     return followup;

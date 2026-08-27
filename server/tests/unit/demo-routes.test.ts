@@ -79,6 +79,40 @@ describe("demo mode API contract", () => {
     expect(outcome.json()).toMatchObject({ outcomeState: "blocked", status: "closed" });
   });
 
+  it("keeps Demo action and follow-up APIs compatible under new XState authority", async () => {
+    const env = loadEnv({
+      NODE_ENV: "test", OTTER_RUNTIME_MODE: "demo", DATABASE_URL: "postgresql://unused/unused",
+      SESSION_SECRET: "demo-xstate-secret-with-more-than-thirty-two-characters", COOKIE_SECURE: "false",
+      WEB_ORIGIN: "http://localhost:3001", LLM_API_KEY: "", BUILD_VERSION: "test-version",
+      GUIDANCE_ENGINE_MODE: "new", ACTION_ENGINE_MODE: "new", FOLLOWUP_ENGINE_MODE: "new",
+    });
+    const candidateStore = new DemoStore();
+    const candidateApp = await buildApp(env, undefined, { demoStore: candidateStore });
+    await candidateApp.ready();
+    try {
+      const abandoned = candidateStore.createAction("放弃的测试行动");
+      expect((await candidateApp.inject({ method: "POST", url: `/api/actions/${abandoned.id}/confirm`, payload: { decision: "abandon" } })).json().status).toBe("deleted");
+
+      const action = candidateStore.createAction("原始行动");
+      const confirmed = await candidateApp.inject({ method: "POST", url: `/api/actions/${action.id}/confirm`, payload: { decision: "confirm", text: "编辑后的行动" } });
+      expect(confirmed.json()).toMatchObject({ status: "confirmed", text: "编辑后的行动" });
+      const followup = await candidateApp.inject({
+        method: "POST", url: "/api/followups",
+        payload: { actionId: action.id, dueAt: new Date(Date.now() + 60_000).toISOString(), authorized: true },
+      });
+      expect(followup.statusCode).toBe(201);
+      const completed = await candidateApp.inject({
+        method: "POST", url: `/api/followups/${followup.json().id}/outcome`, payload: { state: "completed", source: "ui_select" },
+      });
+      expect(completed.json()).toMatchObject({ status: "completed", outcomeState: "completed" });
+      expect((await candidateApp.inject({
+        method: "POST", url: `/api/followups/${followup.json().id}/outcome`, payload: { state: "blocked", source: "ui_select" },
+      })).statusCode).toBe(409);
+    } finally {
+      await candidateApp.close();
+    }
+  });
+
   it("rejects the removed intent field", async () => {
     const bootstrap = await app.inject({ method: "GET", url: "/api/session/bootstrap" });
     const response = await app.inject({

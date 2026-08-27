@@ -1,0 +1,52 @@
+name: p1-model-regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 18 * * 1"
+
+concurrency:
+  group: p1-model-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+jobs:
+  deepseek-model-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_PROVIDER: deepseek
+      LLM_BASE_URL: https://api.deepseek.com
+      LLM_MODEL: deepseek-v4-flash
+      LLM_TIMEOUT_MS: "10000"
+      DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
+      SESSION_SECRET: model-regression-secret-with-more-than-thirty-two-characters
+      COOKIE_SECURE: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22.22.0, cache: npm }
+      - run: npm ci
+      - run: npm run db:generate
+      - name: Require protected model credential
+        shell: bash
+        run: test -n "$LLM_API_KEY" || { echo "blocked: missing protected LLM_API_KEY"; exit 2; }
+      - run: npm run report:structured-capability
+      - run: npm run report:structured-ab
+      - run: npm run test:promptfoo:model
+      - run: npm run report:prompt-regression
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p1-model-evidence-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            test-results/structured-output-capability.json
+            test-results/structured-output-ab.json
+            test-results/promptfoo-model.json
+            test-results/prompt-regression.json

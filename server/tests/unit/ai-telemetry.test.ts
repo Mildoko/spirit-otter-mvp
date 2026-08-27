@@ -18,6 +18,7 @@ describe("AI telemetry privacy contract", () => {
     expect(telemetry.enabled).toBe(false);
     telemetry.startModelCall({ operation: "generate", provider: "test", model: "test", attempt: 1 })
       .finish({ outcome: "success", latencyMs: 1, promptTokens: 2, outputTokens: 3 });
+    telemetry.recordStateParity({ domain: "guidance", engine: "shadow", outcome: "match" });
     await telemetry.shutdown();
   });
 });

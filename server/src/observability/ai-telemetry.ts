@@ -9,6 +9,8 @@ export interface AiModelCallStart {
   provider: string;
   model: string;
   attempt: number;
+  transport?: "legacy_json_object" | "responses_json_schema" | "chat_json_schema";
+  schemaId?: string;
 }
 
 export interface AiModelCallResult {
@@ -26,6 +28,11 @@ export interface AiModelCallSpan {
 export interface AiTelemetry {
   readonly enabled: boolean;
   startModelCall(input: AiModelCallStart): AiModelCallSpan;
+  recordStateParity(input: {
+    domain: "guidance" | "action" | "followup";
+    engine: "shadow" | "new";
+    outcome: "match" | "mismatch";
+  }): void;
   shutdown(): Promise<void>;
 }
 
@@ -42,12 +49,18 @@ export const AI_TRACE_ATTRIBUTE_KEYS = [
   "otter.outcome",
   "otter.operation",
   "otter.runtime_mode",
+  "otter.transport",
+  "otter.schema_id",
+  "otter.state_domain",
+  "otter.state_engine",
+  "otter.parity_outcome",
 ] as const;
 
 const noOpSpan: AiModelCallSpan = { finish: () => undefined };
 export const noOpAiTelemetry: AiTelemetry = {
   enabled: false,
   startModelCall: () => noOpSpan,
+  recordStateParity: () => undefined,
   shutdown: async () => undefined,
 };
 
@@ -71,7 +84,7 @@ export function createAiTelemetry(env: AppEnv): AiTelemetry {
     environment: env.NODE_ENV,
     release: env.BUILD_VERSION,
     mediaUploadEnabled: false,
-    shouldExportSpan: ({ otelSpan }) => otelSpan.name === "ai.model.call",
+    shouldExportSpan: ({ otelSpan }) => otelSpan.name === "ai.model.call" || otelSpan.name === "ai.state.parity",
   });
   const provider = new NodeTracerProvider({
     resource: resourceFromAttributes({ "service.name": "boonzoom-ai-gateway" }),
@@ -92,6 +105,8 @@ export function createAiTelemetry(env: AppEnv): AiTelemetry {
           "otter.capture_mode": "metadata_only",
           "otter.operation": input.operation,
           "otter.runtime_mode": env.OTTER_RUNTIME_MODE,
+          ...(input.transport ? { "otter.transport": input.transport } : {}),
+          ...(input.schemaId ? { "otter.schema_id": input.schemaId } : {}),
         },
       });
       let finished = false;
@@ -102,6 +117,19 @@ export function createAiTelemetry(env: AppEnv): AiTelemetry {
           finishSpan(span, result);
         },
       };
+    },
+    recordStateParity: (input) => {
+      const span = tracer.startSpan("ai.state.parity", {
+        attributes: {
+          "otter.capture_mode": "metadata_only",
+          "otter.runtime_mode": env.OTTER_RUNTIME_MODE,
+          "otter.state_domain": input.domain,
+          "otter.state_engine": input.engine,
+          "otter.parity_outcome": input.outcome,
+        },
+      });
+      span.setStatus({ code: input.outcome === "match" ? SpanStatusCode.OK : SpanStatusCode.ERROR });
+      span.end();
     },
     shutdown: async () => provider.shutdown(),
   };

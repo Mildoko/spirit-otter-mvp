@@ -54,25 +54,36 @@ async function sendAndReadAssistantReply(page: Page, text: string): Promise<stri
   return replies.last().innerText();
 }
 
-test("演示模式完成深汐、自动混合、拾岸、行动和安全退场", async ({ page }) => {
+async function selectAndOpenTata(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /(?:与|当前 Agent)tata对话/u }).click();
+  await expect(page.getByRole("region", { name: /与\s*tata\s*的对话/u })).toBeVisible();
+}
+
+async function openDeerDialogue(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /靠近.*鹿禅.*打开对话/u }).click();
+  await expect(page.getByRole("region", { name: /与\s*鹿禅\s*的对话/u })).toBeVisible();
+}
+
+test("演示模式完成深汐、自动混合、拾岸、行动和安全退场", async ({ page }, testInfo) => {
   await page.request.delete("/api/me/data");
   await page.goto("/");
-  await expect(page.getByText("本地演示，不保存数据")).toBeVisible();
+  const demoDisclosure = page.getByText("本地演示，不保存数据");
+  await expect(demoDisclosure).toHaveCount(1);
+  if (testInfo.project.name === "desktop-chrome") await expect(demoDisclosure).toBeVisible();
   await expect(page.getByRole("region", { name: "灵体水面世界" })).toBeVisible();
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
-  await expect(page.getByRole("region", { name: "与 tata 的对话" })).toBeVisible();
+  await openDeerDialogue(page);
 
   await page.locator(".composer textarea").fill("事情都堆在一起，我不知道先做哪个，想先说说。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.locator(".message-assistant").last()).toBeVisible();
-  const firstOpening = ((await page.locator(".message-assistant").last().innerText()).split(/[，。！？]/u)[0] ?? "").trim();
+  const firstOpening = ((await page.locator(".message-assistant:not(.thinking) p").last().innerText()).split(/[，。！？]/u)[0] ?? "").trim();
 
   await page.locator(".composer textarea").fill("请帮我整理手上的任务。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.locator(".message-assistant").last()).toBeVisible();
   await expect(page.getByText(/角色路由：shore_pick/)).toHaveCount(0);
   await expect(page.getByText("帮我整理", { exact: true })).toHaveCount(0);
-  const secondOpening = ((await page.locator(".message-assistant").last().innerText()).split(/[，。！？]/u)[0] ?? "").trim();
+  const secondOpening = ((await page.locator(".message-assistant:not(.thinking) p").last().innerText()).split(/[，。！？]/u)[0] ?? "").trim();
   expect(secondOpening).not.toBe(firstOpening);
   await page.locator(".composer textarea").fill("先写明天汇报的标题。");
   await page.getByRole("button", { name: "发送消息" }).click();
@@ -91,10 +102,10 @@ test("演示模式完成深汐、自动混合、拾岸、行动和安全退场",
   await expect(page.locator(".emotion-diagnostics")).toHaveCount(0);
 });
 
-test("tata 主动开题、换题并在刷新后保持带聊状态", async ({ page }) => {
+test("鹿禅主动开题、换题并在刷新后保持带聊状态", async ({ page }) => {
   await page.request.delete("/api/me/data");
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await openDeerDialogue(page);
   const firstReply = await sendAndReadAssistantReply(page, "我好无聊，你来开个话题");
   expect(firstReply).not.toMatch(/为什么.{0,6}无聊|无聊背后/u);
   await expect(page.locator(".composer textarea")).toHaveAttribute("placeholder", "接着聊，或者直接说“换一个”…");
@@ -105,7 +116,7 @@ test("tata 主动开题、换题并在刷新后保持带聊状态", async ({ pag
   expect(secondReply).not.toContain("无聊");
 
   await page.reload();
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await openDeerDialogue(page);
   const thirdReply = await sendAndReadAssistantReply(page, "换一个");
   expect(thirdReply).not.toBe(secondReply);
   expect(thirdReply).not.toContain("无聊");
@@ -133,14 +144,14 @@ test("准入按钮直接解锁默认全开的声音设置", async ({ page }) => 
   await page.getByRole("button", { name: "进入静水区并开启声音" }).click();
   await expect(page.getByRole("button", { name: "静音" })).toBeVisible();
   await page.getByRole("button", { name: "打开设置" }).click();
-  for (const label of ["声音总开关", "tata 回复语音", "场景背景音乐", "场景互动音效"]) {
+  for (const label of ["声音总开关", "Agent 回复语音", "场景背景音乐", "场景互动音效"]) {
     await expect(page.getByRole("checkbox", { name: label })).toBeChecked();
   }
 });
 
 test("主体验不再展示逐轮情绪猜测或弱打标控件", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await selectAndOpenTata(page);
   await page.locator(".composer textarea").fill("我很生气。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.getByRole("region", { name: "tata 的情绪推测" })).toHaveCount(0);
@@ -154,15 +165,15 @@ test("用户可关闭主动深入并在结束聊天时选择提交或跳过疗�
   await page.request.delete("/api/me/data");
   await page.goto("/");
   await page.getByRole("button", { name: "打开设置" }).click();
-  const deepToggle = page.getByRole("checkbox", { name: "允许 tata 主动提出深入理解" });
+  const deepToggle = page.getByRole("checkbox", { name: /允许.*主动提出深入理解/u });
   await expect(deepToggle).toBeChecked();
   await deepToggle.uncheck();
   await page.getByRole("button", { name: "关闭设置" }).click();
   await page.reload();
   await page.getByRole("button", { name: "打开设置" }).click();
-  await expect(page.getByRole("checkbox", { name: "允许 tata 主动提出深入理解" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /允许.*主动提出深入理解/u })).not.toBeChecked();
   await page.getByRole("button", { name: "关闭设置" }).click();
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await selectAndOpenTata(page);
   await page.locator(".composer textarea").fill("最近工作很难，我想先说一说");
   await page.getByRole("button", { name: "发送消息" }).click();
   await page.getByRole("button", { name: "结束本次聊天" }).click();
@@ -187,7 +198,7 @@ test("用户可关闭主动深入并在结束聊天时选择提交或跳过疗�
 test("点踩可直接结束并自愿补充失败原因", async ({ page }) => {
   await page.request.delete("/api/me/data");
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await selectAndOpenTata(page);
   await page.locator(".composer textarea").fill("我不知道该说什么");
   await page.getByRole("button", { name: "发送消息" }).click();
   await page.getByRole("button", { name: "结束本次聊天" }).click();
@@ -224,20 +235,18 @@ test("场景可切换星空、收起对话并恢复", async ({ page }) => {
   await page.getByRole("button", { name: "仰望星空" }).click();
   await expect(page.getByRole("button", { name: "返回水面" })).toBeVisible();
   await page.getByRole("button", { name: "返回水面" }).click();
-  const otterButton = page.getByRole("button", { name: "靠近 tata 并打开对话" });
-  await otterButton.focus();
-  await page.keyboard.press("Enter");
+  await selectAndOpenTata(page);
   await page.getByRole("button", { name: "收起对话" }).click();
-  await expect(page.getByRole("region", { name: "与 tata 的对话" })).toHaveCount(0);
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
-  await expect(page.getByRole("region", { name: "与 tata 的对话" })).toBeVisible();
+  await expect(page.getByRole("region", { name: /与\s*tata\s*的对话/u })).toHaveCount(0);
+  await selectAndOpenTata(page);
+  await expect(page.getByRole("region", { name: /与\s*tata\s*的对话/u })).toBeVisible();
 });
 
 test("声音需明确开启，新回复朗读一次，刷新不重播并支持分项控制", async ({ page }) => {
   await installAudioStubs(page);
   await page.goto("/");
+  await selectAndOpenTata(page);
   await expect(page.getByRole("status").filter({ hasText: "tata" })).toBeVisible();
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
   await expect(page.getByRole("button", { name: "静音" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => ((window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents ?? []).filter((event) => event.type === "speak").length)).toBe(1);
   const welcomeSpeech = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; text?: string }> }).__otterAudioEvents.find((event) => event.type === "speak"));
@@ -248,9 +257,9 @@ test("声音需明确开启，新回复朗读一次，刷新不重播并支持�
   await expect(page.locator(".message-assistant").last()).toBeVisible();
   await expect.poll(() => page.evaluate(() => ((window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents ?? []).filter((event) => event.type === "speak").length)).toBe(2);
   const spoken = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; rate?: number }> }).__otterAudioEvents.filter((event) => event.type === "speak").at(-1));
-  expect(spoken?.rate).toBe(0.96);
+  expect(spoken?.rate).toBe(0.92);
 
-  await page.getByRole("button", { name: "重播这条 tata 回复" }).click();
+  await page.getByRole("button", { name: /重播这条\s*tata\s*回复/u }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(3);
 
   await page.getByRole("button", { name: "打开设置" }).click();
@@ -261,14 +270,14 @@ test("声音需明确开启，新回复朗读一次，刷新不重播并支持�
   const countAfterReload = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length);
   expect(countAfterReload).toBe(3);
 
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await selectAndOpenTata(page);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(4);
   await page.locator(".composer textarea").fill("我马上要从楼顶跳下去。");
   await page.getByRole("button", { name: "发送消息" }).click();
   await expect(page.getByRole("button", { name: "请现场研究人员过来" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string }> }).__otterAudioEvents.filter((event) => event.type === "speak").length)).toBe(5);
   const safetySpeech = await page.evaluate(() => (window as unknown as { __otterAudioEvents: Array<{ type: string; rate?: number }> }).__otterAudioEvents.filter((event) => event.type === "speak").at(-1));
-  expect(safetySpeech?.rate).toBe(0.93);
+  expect(safetySpeech?.rate).toBe(0.96);
 });
 
 test("按住麦克风说话，松开后等待最终识别并自动发送", async ({ page }) => {
@@ -290,7 +299,7 @@ test("按住麦克风说话，松开后等待最终识别并自动发送", async
     Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: FakeRecognition });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await selectAndOpenTata(page);
   const microphone = page.getByRole("button", { name: "按住麦克风说话" });
   const box = await microphone.boundingBox();
   expect(box).not.toBeNull();
@@ -307,7 +316,7 @@ test("浏览器不支持语音识别时给出可见反馈", async ({ page }) => 
     Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, value: undefined });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await selectAndOpenTata(page);
   await page.getByRole("button", { name: "按住麦克风说话" }).press("Space");
   await expect(page.locator(".operation-notice")).toContainText("当前浏览器不支持语音识别，请使用文字输入");
 });
@@ -345,7 +354,7 @@ test("回访提供五个无催促结果并尊重用户选择", async ({ page }) 
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "followup-1", outcomeState: "blocked", status: "closed" }) });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "靠近 tata 并打开对话" }).click();
+  await openDeerDialogue(page);
   const card = page.locator(".followup-card");
   await expect(card).toContainText("不用交作业，只选最接近现在的状态");
   for (const label of ["还没开始", "推进了一点", "已经完成", "卡住了", "想改轻一点"]) {
@@ -357,7 +366,7 @@ test("回访提供五个无催促结果并尊重用户选择", async ({ page }) 
   await expect(page.locator(".operation-notice")).toContainText("这不是失败");
 });
 
-test("用户可以查看、确认、纠正、停用和删除 tata 的记忆", async ({ page }) => {
+test("用户可以查看、确认、纠正、停用和删除鹿禅的记忆", async ({ page }) => {
   const relation = { id: "relation-1", type: "may_trigger", sourceMemoryId: "memory-1", targetMemoryId: "memory-2", sourceContent: "明天和主管开会", targetContent: "主管表达很直接", claimState: "hypothesis", status: "active", confidence: 0.94, observedAt: new Date().toISOString() };
   let memories = [
     { schemaVersion: 2, id: "memory-1", kind: "episode", content: "明天和主管开会", claimState: "hypothesis", status: "active", observedAt: new Date().toISOString(), eventAt: new Date(Date.now() + 86_400_000).toISOString(), validFrom: new Date().toISOString(), evidence: [{ excerpt: "明天和主管开会", capturedAt: new Date().toISOString() }], relations: [relation] },
@@ -379,8 +388,8 @@ test("用户可以查看、确认、纠正、停用和删除 tata 的记忆", as
   await page.goto("/");
   await page.getByRole("button", { name: "打开设置" }).click();
   await page.getByRole("button", { name: "查看和管理记忆" }).click();
-  const center = page.getByRole("dialog", { name: "tata 记得的我" });
-  await expect(center).toContainText("tata 的推测");
+  const center = page.getByRole("dialog", { name: "鹿禅记得的我" });
+  await expect(center).toContainText("鹿禅的推测");
   await expect(center).toContainText("待确认关系");
   await center.getByRole("button", { name: "这是准确的" }).click();
   await expect(center).toContainText("你已确认");

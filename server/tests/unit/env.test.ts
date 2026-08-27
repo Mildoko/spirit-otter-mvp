@@ -4,6 +4,14 @@ import { loadEnv } from "../../src/config/env.js";
 const base = { DATABASE_URL: "postgresql://unused/unused", SESSION_SECRET: "a-secret-with-at-least-thirty-two-characters", LLM_API_KEY: "" };
 
 describe("runtime mode environment", () => {
+  it("defaults every P1 migration engine to legacy and rejects unknown modes", () => {
+    const parsed = loadEnv(base);
+    expect(parsed.LLM_STRUCTURED_OUTPUT_MODE).toBe("legacy");
+    expect(parsed.GUIDANCE_ENGINE_MODE).toBe("legacy");
+    expect(parsed.ACTION_ENGINE_MODE).toBe("legacy");
+    expect(parsed.FOLLOWUP_ENGINE_MODE).toBe("legacy");
+    expect(() => loadEnv({ ...base, GUIDANCE_ENGINE_MODE: "sometimes" })).toThrow(/GUIDANCE_ENGINE_MODE/);
+  });
   it.each(["full", "demo", "lab"] as const)("accepts %s", (mode) => {
     expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: mode }).OTTER_RUNTIME_MODE).toBe(mode);
   });

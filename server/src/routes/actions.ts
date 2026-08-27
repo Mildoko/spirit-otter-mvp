@@ -6,6 +6,8 @@ import { RECORD_DAYS } from "../config/constants.js";
 import { requireAuth } from "../services/session-service.js";
 import { logCoreDialogueEvent } from "../services/behavior-service.js";
 import { addDays } from "../utils.js";
+import type { AiTelemetry } from "../observability/ai-telemetry.js";
+import { resolveActionTransition } from "../state-machines/action-transition.js";
 
 const idParams = z.object({ id: z.string() });
 const confirmSchema = z.object({
@@ -14,21 +16,22 @@ const confirmSchema = z.object({
 });
 const actionStatusSchema = z.object({ status: z.enum(["completed", "deferred", "deleted"]) });
 
-export function registerActionRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
+export function registerActionRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv, telemetry?: AiTelemetry): void {
   app.post("/api/actions/:id/confirm", async (request, reply) => {
     const auth = await requireAuth(request, db, env);
     const { id } = idParams.parse(request.params);
     const body = confirmSchema.parse(request.body);
     const action = await db.actionItem.findFirst({ where: { id, conversation: { userId: auth.userId } } });
     if (!action) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "行动不存在" } });
-    if (action.status !== "draft") return reply.code(409).send({ error: { code: "ACTION_CLOSED", message: "行动已经处理" } });
+    const transition = resolveActionTransition({ mode: env.ACTION_ENGINE_MODE, status: action.status, event: { type: body.decision === "confirm" ? "CONFIRM" : "ABANDON" }, telemetry });
+    if (!transition.accepted) return reply.code(409).send({ error: { code: "ACTION_CLOSED", message: "行动已经处理" } });
 
     const updated = await db.$transaction(async (tx) => {
       const item = await tx.actionItem.update({
         where: { id },
         data: body.decision === "confirm"
-          ? { status: "confirmed", confirmedAt: new Date(), text: body.text ?? action.text, expiresAt: addDays(new Date(), RECORD_DAYS) }
-          : { status: "deleted", expiresAt: addDays(new Date(), RECORD_DAYS) },
+          ? { status: transition.state, confirmedAt: new Date(), text: body.text ?? action.text, expiresAt: addDays(new Date(), RECORD_DAYS) }
+          : { status: transition.state, expiresAt: addDays(new Date(), RECORD_DAYS) },
       });
       if (body.decision === "confirm") {
         const edited = Boolean(body.text && body.text !== action.text);
@@ -61,14 +64,16 @@ export function registerActionRoutes(app: FastifyInstance, db: PrismaClient, env
     const { id } = idParams.parse(request.params);
     const { status } = actionStatusSchema.parse(request.body);
     const action = await db.actionItem.findFirst({ where: { id, conversation: { userId: auth.userId } } });
-    if (!action || action.status === "draft" || action.status === "deleted") {
+    if (!action) {
       return reply.code(404).send({ error: { code: "NOT_FOUND", message: "可更新的行动不存在" } });
     }
+    const transition = resolveActionTransition({ mode: env.ACTION_ENGINE_MODE, status: action.status, event: { type: status === "completed" ? "COMPLETE" : status === "deferred" ? "DEFER" : "DELETE" }, telemetry });
+    if (!transition.accepted) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "可更新的行动不存在" } });
     const updated = await db.$transaction(async (tx) => {
       const item = await tx.actionItem.update({
         where: { id },
         data: {
-          status,
+          status: transition.state,
           ...(status === "completed" ? { completedAt: new Date() } : {}),
           expiresAt: addDays(new Date(), RECORD_DAYS),
         },

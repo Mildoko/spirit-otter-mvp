@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test.skip(process.env.E2E_MODE !== "demo", "仅在 E2E_MODE=demo 时运行");
 
-test("用户理解边界后浏览外圈，并把公共内容带回船上", async ({ page }) => {
+test("用户理解边界后浏览外圈，并把公共内容带回船上", async ({ page }, testInfo) => {
   const communityWrites: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes("/api/community/") && request.method() !== "GET") communityWrites.push(`${request.method()} ${request.url()}`);
@@ -19,7 +19,13 @@ test("用户理解边界后浏览外圈，并把公共内容带回船上", async
 
   await expect(page.getByRole("region", { name: "外圈万象廊" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "万象廊" })).toBeVisible();
-  await expect(page.getByText("当前只读：不能报名、发帖或联系他人")).toBeVisible();
+  const readOnlyBoundary = page.locator(".outer-gallery-footnote");
+  await expect(readOnlyBoundary).toBeVisible();
+  if (testInfo.project.name === "desktop-chrome") {
+    await expect(readOnlyBoundary).toContainText("当前只读：不能报名、发帖或联系他人");
+  } else {
+    expect(await readOnlyBoundary.evaluate((element) => getComputedStyle(element, "::after").content)).toContain("当前只读");
+  }
   await page.getByRole("button", { name: "查看：山城夜灯慢行" }).click();
 
   await expect(page.getByRole("heading", { name: "山城夜灯慢行" })).toBeVisible();

@@ -2,14 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractFallbackSignals } from "../../src/modules/support/fallback-signals.js";
 import { chooseResponsePlan } from "../../src/modules/support/policy-router.js";
 import { runHardRiskGuard } from "../../src/modules/support/risk-guard.js";
-
-const lowSignalSamples = [
-  "不知道说什么", "脑子空了", "说不上来", "不知道怎么说", "像没接上电", "卡住了", "就是很乱",
-  "嗯……脑子空", "我也讲不明白", "不知道从哪里说", "就，那种，唉", "感觉堵住了", "没词了", "组织不出来",
-  "不是不想说，是说不上来", "我改口，还是不知道怎么讲", "可能就是乱", "这会儿没接上电", "脑子一片空白",
-  "不知道说啥", "很难形容", "话到嘴边又没了", "我接不上自己的话", "什么都说不完整",
-  "不知道说什么，但也许可以理小一点", "脑子空，直接给我一个动作", "先别问，我说不上来", "算了，不想整理了",
-] as const;
+import { lowSignalFrozenSamples as lowSignalSamples } from "../../src/evals/datasets/experience-frozen.js";
 
 const state = { valence: -0.2, arousal: 0.3, stressLoad: 0.4, cognitiveOverload: 0.4, supportNeed: 0.4, confidence: 0.7, evidenceSpans: [], validUntil: new Date(Date.now() + 60_000).toISOString() };
 

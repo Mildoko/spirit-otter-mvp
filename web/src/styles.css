@@ -693,6 +693,7 @@ button { cursor: pointer; }
   .message { max-width: 96%; margin-bottom: 12px; }
   .message p { padding: 10px 12px; line-height: 1.5; }
   .conversation-drawer .operation-notice, .conversation-drawer .inline-error { max-height: 54px; margin: 0; padding: 5px 12px; overflow-y: auto; line-height: 1.25; background: #0b2835; box-sizing: border-box; }
+  .conversation-drawer .operation-notice { pointer-events: none; }
   .conversation-drawer .composer { right: calc(8px + var(--safe-right)); bottom: calc(8px + var(--safe-bottom)); left: auto; width: min(58vw, 440px); min-height: 52px; margin: 0; padding: 6px 7px 6px 14px; transform: none; background: #07202d; }
   .composer textarea { height: 44px; min-height: 44px; max-height: 64px; font-size: 20px; line-height: 1.2; }
   .composer > button, .composer > .voice-input { width: 48px; min-width: 48px; height: 48px; }

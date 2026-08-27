@@ -67,7 +67,7 @@ export function registerDemoRoutes(app: FastifyInstance, env: AppEnv, orchestrat
     if (!sessionId) return store;
     let browserStore = browserStores.get(sessionId);
     if (!browserStore) {
-      browserStore = new (store.constructor as new () => DemoStore)();
+      browserStore = store.forkEmpty();
       browserStores.set(sessionId, browserStore);
     }
     return browserStore;

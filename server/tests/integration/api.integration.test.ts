@@ -36,6 +36,9 @@ integration("Postgres API integration", () => {
       LLM_API_KEY: "",
       LOCAL_TEST_MODE: "false",
       OTTER_RUNTIME_MODE: "full",
+      GUIDANCE_ENGINE_MODE: "new",
+      ACTION_ENGINE_MODE: "new",
+      FOLLOWUP_ENGINE_MODE: "new",
       AUDIO_V1: "true",
       MEMORY_V2: "true",
     });
@@ -175,6 +178,87 @@ integration("Postgres API integration", () => {
     const exported = await app.inject({ method: "GET", url: "/api/me/export", headers: { cookie } });
     expect(exported.statusCode).toBe(200);
     expect(exported.json().conversations[0].actions).toHaveLength(1);
+
+    const createDraftAction = async (key: string) => {
+      const turn = await db.turn.create({
+        data: { conversationId, idempotencyKey: `transition-${key}`, status: "completed", expiresAt: new Date(Date.now() + 86_400_000) },
+      });
+      return db.actionItem.create({
+        data: { conversationId, turnId: turn.id, text: `测试行动-${key}`, expiresAt: new Date(Date.now() + 86_400_000) },
+      });
+    };
+    const confirmAction = async (key: string) => {
+      const draft = await createDraftAction(key);
+      const response = await app.inject({
+        method: "POST", url: `/api/actions/${draft.id}/confirm`, headers: { cookie, origin: env.WEB_ORIGIN },
+        payload: { decision: "confirm", text: `已编辑行动-${key}` },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ status: "confirmed", text: `已编辑行动-${key}` });
+      return draft.id;
+    };
+
+    const abandoned = await createDraftAction("abandon");
+    expect((await app.inject({
+      method: "POST", url: `/api/actions/${abandoned.id}/confirm`, headers: { cookie, origin: env.WEB_ORIGIN },
+      payload: { decision: "abandon" },
+    })).json().status).toBe("deleted");
+
+    for (const status of ["completed", "deferred", "deleted"] as const) {
+      const id = await confirmAction(`lifecycle-${status}`);
+      const response = await app.inject({
+        method: "PATCH", url: `/api/actions/${id}`, headers: { cookie, origin: env.WEB_ORIGIN }, payload: { status },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().status).toBe(status);
+    }
+
+    const unauthorizedActionId = await confirmAction("unauthorized-followup");
+    expect((await app.inject({
+      method: "POST", url: "/api/followups", headers: { cookie, origin: env.WEB_ORIGIN },
+      payload: { actionId: unauthorizedActionId, dueAt: new Date(Date.now() + 60_000).toISOString(), authorized: false },
+    })).statusCode).toBe(400);
+
+    const createFollowup = async (key: string) => {
+      const id = await confirmAction(`followup-${key}`);
+      const response = await app.inject({
+        method: "POST", url: "/api/followups", headers: { cookie, origin: env.WEB_ORIGIN },
+        payload: { actionId: id, dueAt: new Date(Date.now() + 60_000).toISOString(), authorized: true },
+      });
+      expect(response.statusCode).toBe(201);
+      return response.json().id as string;
+    };
+
+    for (const status of ["completed", "deferred", "closed", "deleted"] as const) {
+      const id = await createFollowup(`lifecycle-${status}`);
+      const response = await app.inject({
+        method: "PATCH", url: `/api/followups/${id}`, headers: { cookie, origin: env.WEB_ORIGIN }, payload: { status },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().status).toBe(status);
+    }
+
+    for (const state of ["not_started", "partial_progress", "completed", "blocked", "redefined"] as const) {
+      const id = await createFollowup(`outcome-${state}`);
+      const first = await app.inject({
+        method: "POST", url: `/api/followups/${id}/outcome`, headers: { cookie, origin: env.WEB_ORIGIN },
+        payload: { state, source: "ui_select" },
+      });
+      expect(first.statusCode).toBe(200);
+      expect(first.json()).toMatchObject({ outcomeState: state, outcomeRevision: 1 });
+      const repeated = await app.inject({
+        method: "POST", url: `/api/followups/${id}/outcome`, headers: { cookie, origin: env.WEB_ORIGIN },
+        payload: { state, source: "ui_select" },
+      });
+      expect(repeated.statusCode).toBe(409);
+      if (state === "completed") {
+        const regression = await app.inject({
+          method: "POST", url: `/api/followups/${id}/outcome`, headers: { cookie, origin: env.WEB_ORIGIN },
+          payload: { state: "blocked", source: "ui_select" },
+        });
+        expect(regression.statusCode).toBe(409);
+      }
+    }
   });
 
   it("allows only one concurrent turn and releases the conversation lock", async () => {

@@ -47,9 +47,9 @@ describe("GuidanceStateV4", () => {
   });
 
   it("stops clarification at two attempts and resets after progress", () => {
-    const first = advanceGuidanceState({ previous: { ...DEFAULT_GUIDANCE_STATE }, intent, signals: signals(0.2, 0.2), plan: plan("clarify_low_signal"), finalReply: "说一个词就好。", deliveredAccent: "none" });
-    const second = advanceGuidanceState({ previous: first, intent, signals: signals(0.2, 0.2), plan: plan("clarify_low_signal"), finalReply: "也可以停一下。", deliveredAccent: "none" });
-    const progressed = advanceGuidanceState({ previous: second, intent, signals: signals(0.7, 0.8), plan: plan("invite_one_small_action"), finalReply: "如果愿意，可以整理。", deliveredAccent: "none" });
+    const first = advanceGuidanceState({ previous: { ...DEFAULT_GUIDANCE_STATE }, intent, signals: signals(0.2, 0.2), plan: plan("clarify_low_signal"), deliveredAccent: "none" });
+    const second = advanceGuidanceState({ previous: first, intent, signals: signals(0.2, 0.2), plan: plan("clarify_low_signal"), deliveredAccent: "none" });
+    const progressed = advanceGuidanceState({ previous: second, intent, signals: signals(0.7, 0.8), plan: plan("invite_one_small_action"), deliveredAccent: "none" });
     expect(first.clarifyAttemptCount).toBe(1);
     expect(second.clarifyAttemptCount).toBe(2);
     expect(progressed.clarifyAttemptCount).toBe(0);
@@ -57,8 +57,8 @@ describe("GuidanceStateV4", () => {
   });
 
   it("persists question boundaries and records only delivered accents", () => {
-    const bounded = advanceGuidanceState({ previous: { ...DEFAULT_GUIDANCE_STATE }, intent: { ...intent, requestNoQuestions: true }, signals: signals(0.6, 0.2), plan: plan("specific_reflection"), finalReply: "我不问。", deliveredAccent: "none" });
-    const allowed = advanceGuidanceState({ previous: bounded, intent: { ...intent, allowQuestions: true }, signals: signals(0.6, 0.2), plan: plan("specific_reflection"), finalReply: "可以。", deliveredAccent: "metaphor" });
+    const bounded = advanceGuidanceState({ previous: { ...DEFAULT_GUIDANCE_STATE }, intent: { ...intent, requestNoQuestions: true }, signals: signals(0.6, 0.2), plan: plan("specific_reflection"), deliveredAccent: "none" });
+    const allowed = advanceGuidanceState({ previous: bounded, intent: { ...intent, allowQuestions: true }, signals: signals(0.6, 0.2), plan: plan("specific_reflection"), deliveredAccent: "metaphor" });
     expect(bounded.userRequestedNoQuestions).toBe(true);
     expect(bounded.lastMetaphorTurn).toBeNull();
     expect(allowed.userRequestedNoQuestions).toBe(false);
@@ -70,7 +70,7 @@ describe("GuidanceStateV4", () => {
     const oldSegment = previous.healing.segmentId;
     previous.healing = { ...previous.healing, status: "repairing", consecutiveMissCount: 2, expiresAt: "2026-08-23T00:00:00.000Z" };
     const next = advanceGuidanceState({
-      previous, intent, signals: signals(0.7, 0.2), plan: plan("specific_reflection"), finalReply: "我先具体回应。", deliveredAccent: "none",
+      previous, intent, signals: signals(0.7, 0.2), plan: plan("specific_reflection"), deliveredAccent: "none",
       healingBrief: { schemaVersion: 1, status: "active", goal: "felt_seen", depth: "recognize", insight: null, rupture: "none", realityPressure: "none", allowedMoves: [], forbiddenMoves: [], replyOutline: [] },
       now: new Date("2026-08-24T00:00:01.000Z"),
     });

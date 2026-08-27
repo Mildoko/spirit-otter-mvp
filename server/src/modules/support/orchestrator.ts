@@ -37,7 +37,8 @@ import { mapEmotionState } from "./emotion-mapper.js";
 import { smoothEmotionState } from "./emotion-smoothing.js";
 import { LlmGateway, type HealingCritique, type LlmMetrics } from "./llm-gateway.js";
 import { chooseResponsePlan, detectConversationIntent } from "./policy-router.js";
-import { advanceGuidanceState, parseGuidanceState } from "./guidance-state.js";
+import { parseGuidanceState, type AdvanceGuidanceStateInput } from "./guidance-state.js";
+import { resolveGuidanceTransition } from "../../state-machines/guidance-transition.js";
 import { resolveRiskLevel, runHardRiskGuard } from "./risk-guard.js";
 import { fallbackReply, highRiskResponse } from "./static-responses.js";
 import { resolveCurrentDateReply } from "./runtime-facts.js";
@@ -186,7 +187,7 @@ export class SupportOrchestrator {
         skillDiagnostics: buildSkillDiagnostics(skillResolution, []),
         healingBrief,
         healingScenario: healingResolution.scenario,
-        nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent: "none", topicSkill: nextTopicState, topicLead: deactivateTopicLead(guidanceState.topicLead), healingBrief, deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, resetHealing: true, now: this.now() }),
+        nextGuidanceState: this.advanceGuidance({ previous: guidanceState, intent, signals, plan: routed.plan, deliveredAccent: "none", topicSkill: nextTopicState, topicLead: deactivateTopicLead(guidanceState.topicLead), healingBrief, deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, resetHealing: true, now: this.now() }),
       };
     }
 
@@ -221,12 +222,11 @@ export class SupportOrchestrator {
         skillDiagnostics: buildSkillDiagnostics(skillResolution, generated && !generatedValid ? ["PUBLIC_AGENT_ROLE_MISMATCH"] : []),
         healingBrief: inactiveHealingBrief(),
         healingScenario: healingResolution.scenario,
-        nextGuidanceState: advanceGuidanceState({
+        nextGuidanceState: this.advanceGuidance({
           previous: guidanceState,
           intent,
           signals,
           plan: routed.plan,
-          finalReply,
           deliveredAccent: "none",
           topicSkill: nextTopicState,
           topicLead: nextTopicLead,
@@ -247,7 +247,7 @@ export class SupportOrchestrator {
         responseSource: "local_fallback", characterVersion: CHARACTER_VERSION,
         skillResolution, skillDiagnostics: buildSkillDiagnostics(skillResolution, []),
         healingBrief: inactiveHealingBrief(), healingScenario: healingResolution.scenario,
-        nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply: currentDateReply, deliveredAccent: "none", topicSkill: nextTopicState, topicLead: guidanceState.topicLead, healingBrief: inactiveHealingBrief(), deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, now: this.now() }),
+        nextGuidanceState: this.advanceGuidance({ previous: guidanceState, intent, signals, plan: routed.plan, deliveredAccent: "none", topicSkill: nextTopicState, topicLead: guidanceState.topicLead, healingBrief: inactiveHealingBrief(), deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, now: this.now() }),
       };
     }
 
@@ -264,7 +264,7 @@ export class SupportOrchestrator {
         responseSource: "local_fallback", characterVersion: CHARACTER_VERSION,
         skillResolution, skillDiagnostics: buildSkillDiagnostics(skillResolution, []),
         healingBrief: inactiveHealingBrief(), healingScenario: healingResolution.scenario,
-        nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply: blockedSkillReply, deliveredAccent: "none", topicSkill: nextTopicState, topicLead: deactivateTopicLead(guidanceState.topicLead), healingBrief: inactiveHealingBrief(), deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, now: this.now() }),
+        nextGuidanceState: this.advanceGuidance({ previous: guidanceState, intent, signals, plan: routed.plan, deliveredAccent: "none", topicSkill: nextTopicState, topicLead: deactivateTopicLead(guidanceState.topicLead), healingBrief: inactiveHealingBrief(), deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, now: this.now() }),
       };
     }
 
@@ -292,6 +292,7 @@ export class SupportOrchestrator {
     const generationFailure = generated ? null : this.gateway.getLastFailure("generate");
     const skillFallback = skillResolution.status === "active" ? fallbackForSkill(input.text, skillResolution) : null;
     const authoredHealingFallback = healingBrief.status !== "inactive" && !routed.plan.allowActionDraft
+      && !["invite_one_small_action", "clarify_then_invite"].includes(routed.plan.primaryStrategy)
       ? healingFallbackReply({ scenario: healingResolution.scenario, brief: healingBrief, noQuestions: effectiveNoQuestions })
       : null;
     const fallback = topicTurn
@@ -445,8 +446,16 @@ export class SupportOrchestrator {
         } : {}),
         styleVersion: responseStyle.styleVersion,
       },
-      nextGuidanceState: advanceGuidanceState({ previous: guidanceState, intent, signals, plan: routed.plan, finalReply, deliveredAccent, topicSkill: nextTopicState, topicLead: nextTopicLead, healingBrief, deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, now: this.now() }),
+      nextGuidanceState: this.advanceGuidance({ previous: guidanceState, intent, signals, plan: routed.plan, deliveredAccent, topicSkill: nextTopicState, topicLead: nextTopicLead, healingBrief, deepAnalysisEnabled: healingResolution.deepAnalysisEnabled, now: this.now() }),
     };
+  }
+
+  private advanceGuidance(transition: AdvanceGuidanceStateInput) {
+    return resolveGuidanceTransition({
+      mode: this.env.GUIDANCE_ENGINE_MODE,
+      transition,
+      telemetry: this.gateway.telemetry,
+    }).state;
   }
 }
 

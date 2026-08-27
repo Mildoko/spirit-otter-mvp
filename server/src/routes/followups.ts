@@ -8,6 +8,9 @@ import { logCoreDialogueEvent } from "../services/behavior-service.js";
 import { addDays } from "../utils.js";
 import { followupDelayBucket } from "../events/core-dialogue-events.js";
 import { assertFollowupOutcomeTransition, followupOutcomeSchema, lifecycleStatusForOutcome } from "../followups/outcome-state.js";
+import type { AiTelemetry } from "../observability/ai-telemetry.js";
+import { assertFollowupCreation } from "../state-machines/followup-machine.js";
+import { resolveFollowupTransition } from "../state-machines/followup-transition.js";
 
 const createSchema = z.object({
   actionId: z.string(),
@@ -17,7 +20,7 @@ const createSchema = z.object({
 const patchSchema = z.object({ status: z.enum(["completed", "deferred", "closed", "deleted"]) });
 const outcomeSchema = z.object({ state: followupOutcomeSchema, source: z.literal("ui_select") }).strict();
 
-export function registerFollowupRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv): void {
+export function registerFollowupRoutes(app: FastifyInstance, db: PrismaClient, env: AppEnv, telemetry?: AiTelemetry): void {
   app.post("/api/followups", async (request, reply) => {
     const auth = await requireAuth(request, db, env);
     const body = createSchema.parse(request.body);
@@ -29,6 +32,7 @@ export function registerFollowupRoutes(app: FastifyInstance, db: PrismaClient, e
       where: { id: body.actionId, status: "confirmed", conversation: { userId: auth.userId } },
     });
     if (!action) return reply.code(400).send({ error: { code: "ACTION_NOT_CONFIRMED", message: "只能为已确认行动创建回访" } });
+    assertFollowupCreation({ authorized: body.authorized, actionStatus: action.status });
     const followup = await db.$transaction(async (tx) => {
       const item = await tx.followupTask.create({
         data: {
@@ -60,13 +64,19 @@ export function registerFollowupRoutes(app: FastifyInstance, db: PrismaClient, e
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const { status } = patchSchema.parse(request.body);
     const followup = await db.followupTask.findFirst({ where: { id, conversation: { userId: auth.userId } } });
-    if (!followup || ["closed", "deleted"].includes(followup.status)) {
+    if (!followup) {
       return reply.code(404).send({ error: { code: "NOT_FOUND", message: "回访不存在" } });
     }
+    const transition = resolveFollowupTransition({
+      mode: env.FOLLOWUP_ENGINE_MODE, status: followup.status, outcomeState: followup.outcomeState,
+      outcomeLabeled: followup.outcomeLabeledAt !== null,
+      event: { type: status === "completed" ? "COMPLETE" : status === "deferred" ? "DEFER" : status === "closed" ? "CLOSE" : "DELETE" }, telemetry,
+    });
+    if (!transition.accepted) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "回访不存在" } });
     const updated = await db.$transaction(async (tx) => {
       const item = await tx.followupTask.update({
         where: { id },
-        data: { status, expiresAt: addDays(new Date(), RECORD_DAYS) },
+        data: { status: transition.state.status, expiresAt: addDays(new Date(), RECORD_DAYS) },
       });
       if (status === "completed") {
         await logCoreDialogueEvent(tx, auth.userId, {
@@ -102,8 +112,12 @@ export function registerFollowupRoutes(app: FastifyInstance, db: PrismaClient, e
     if (!followup || followup.status === "deleted") {
       return reply.code(404).send({ error: { code: "NOT_FOUND", message: "回访不存在" } });
     }
+    const transition = resolveFollowupTransition({
+      mode: env.FOLLOWUP_ENGINE_MODE, status: followup.status, outcomeState: followup.outcomeState,
+      outcomeLabeled: followup.outcomeLabeledAt !== null, event: { type: "LABEL_OUTCOME", state: body.state }, telemetry,
+    });
     try {
-      assertFollowupOutcomeTransition({
+      if (!transition.accepted) assertFollowupOutcomeTransition({
         from: followup.outcomeState,
         to: body.state,
         wasPreviouslyLabeled: followup.outcomeLabeledAt !== null,
@@ -121,7 +135,7 @@ export function registerFollowupRoutes(app: FastifyInstance, db: PrismaClient, e
           outcomeState: body.state,
           outcomeLabeledAt: now,
           outcomeRevision: revision,
-          status: lifecycleStatusForOutcome(body.state),
+          status: transition.state.status ?? lifecycleStatusForOutcome(body.state),
           expiresAt: addDays(now, RECORD_DAYS),
         },
       });

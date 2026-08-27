@@ -17,6 +17,8 @@ const booleanFromStringDefaultFalse = z
   .default("false")
   .transform((value) => value === "true");
 
+const migrationMode = z.enum(["legacy", "shadow", "new"]).default("legacy");
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().min(1),
@@ -26,6 +28,7 @@ const envSchema = z.object({
   LLM_API_KEY: z.string().default(""),
   LLM_MODEL: z.string().default("deepseek-v4-flash"),
   LLM_JSON_MODE: booleanFromString,
+  LLM_STRUCTURED_OUTPUT_MODE: migrationMode,
   LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(15000),
   SERVER_HOST: z.string().default("0.0.0.0"),
   SERVER_PORT: z.coerce.number().int().positive().default(3001),
@@ -44,6 +47,9 @@ const envSchema = z.object({
   EXTERNAL_PREVIEW_CODE: z.string().max(64).default(""),
   EXTERNAL_PREVIEW_MAX_SESSIONS: z.coerce.number().int().min(1).max(100).default(20),
   AI_OBSERVABILITY_ENABLED: booleanFromStringDefaultFalse,
+  GUIDANCE_ENGINE_MODE: migrationMode,
+  ACTION_ENGINE_MODE: migrationMode,
+  FOLLOWUP_ENGINE_MODE: migrationMode,
   LANGFUSE_PUBLIC_KEY: z.string().default(""),
   LANGFUSE_SECRET_KEY: z.string().default(""),
   LANGFUSE_BASE_URL: z.string().url().default("https://cloud.langfuse.com"),
