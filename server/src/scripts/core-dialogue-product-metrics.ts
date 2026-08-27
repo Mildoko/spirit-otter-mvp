@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { calculateCoreDialogueProductMetrics, renderCoreDialogueProductMetricsMarkdown } from "../metrics/core-dialogue-product-metrics.js";
+import { resolveEvidenceProvenance } from "../release/evidence-integrity.js";
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const prisma = new PrismaClient();
@@ -11,7 +12,8 @@ try {
     select: { id: true, eventType: true, eventVersion: true, metadataJson: true, occurredAt: true },
     orderBy: { occurredAt: "asc" },
   });
-  const report = calculateCoreDialogueProductMetrics(events);
+  const now = new Date();
+  const report = calculateCoreDialogueProductMetrics(events, now, resolveEvidenceProvenance(workspaceRoot, now));
   const outputDirectory = resolve(workspaceRoot, "test-results");
   mkdirSync(outputDirectory, { recursive: true });
   writeFileSync(resolve(outputDirectory, "core-dialogue-product-metrics.json"), JSON.stringify(report, null, 2), "utf8");

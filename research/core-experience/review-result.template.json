@@ -6,5 +6,6 @@
   "reviewerIds": [],
   "blindingAttested": false,
   "evaluatedCases": 0,
-  "redFlags": []
+  "redFlags": [],
+  "candidateCommit": "replace-with-reviewed-git-sha"
 }

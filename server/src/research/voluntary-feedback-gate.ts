@@ -1,6 +1,7 @@
 import { CORE_DIALOGUE_EVENT_VERSION, coreDialogueEventSchemas } from "../events/core-dialogue-events.js";
 import type { ProductMetricEvent } from "../metrics/core-dialogue-product-metrics.js";
 import { z } from "zod";
+import type { EvidenceProvenanceV1 } from "../release/evidence-integrity.js";
 
 export interface ResearchSafetyReviewV1 {
   schemaVersion: "research-safety-review-v1";
@@ -42,6 +43,7 @@ export interface VoluntaryFeedbackGateReportV1 {
   reasons: string[];
   invalidReasons: string[];
   privacy: "structured_metadata_only";
+  provenance?: EvidenceProvenanceV1;
 }
 
 const positiveMovements = new Set(["more_space", "clearer", "more_choice"]);
@@ -54,6 +56,7 @@ export function evaluateVoluntaryFeedbackGate(input: {
   events: ProductMetricEvent[];
   safetyReview?: ResearchSafetyReviewV1;
   now?: Date;
+  provenance?: EvidenceProvenanceV1;
 }): VoluntaryFeedbackGateReportV1 {
   const invalidReasons: string[] = [];
   const latestBySegment = new Map<string, { occurredAt: Date; metadata: Record<string, unknown> }>();
@@ -137,6 +140,7 @@ export function evaluateVoluntaryFeedbackGate(input: {
     reasons,
     invalidReasons,
     privacy: "structured_metadata_only",
+    ...(input.provenance ? { provenance: input.provenance } : {}),
   };
 }
 
@@ -149,6 +153,9 @@ export function renderVoluntaryFeedbackGateMarkdown(report: VoluntaryFeedbackGat
     `- 自愿完成片段：${report.completedSegments} / ${report.thresholds.minimumCompletedSegments}`,
     `- 不完整提交：${report.incompleteSubmissions}`,
     `- 严重事件审查：${report.safetyReviewStatus}`,
+    ...(report.provenance ? [
+      `- Git：${report.provenance.gitCommit}${report.provenance.gitDirty ? "（工作区有未提交改动）" : ""}`,
+    ] : []),
     "",
     "| 门槛 | 观察值 | 要求 |",
     "| --- | ---: | ---: |",

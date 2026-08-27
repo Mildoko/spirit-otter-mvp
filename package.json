@@ -31,6 +31,7 @@
     ,"report:events": "npm run report:events -w @otter/server"
     ,"report:product-metrics": "npm run report:product-metrics -w @otter/server"
     ,"report:feedback-gate": "npm run report:feedback-gate -w @otter/server"
+    ,"report:ai-privacy": "npm run report:ai-privacy -w @otter/server"
     ,"prereview:experience": "npm run build -w @otter/server"
     ,"review:experience": "node server/dist/scripts/core-experience-blind-review.js"
     ,"prereport:release": "npm run build -w @otter/server"

@@ -42,6 +42,8 @@
     "report:product-metrics": "node dist/scripts/core-dialogue-product-metrics.js",
     "prereport:feedback-gate": "npm run build",
     "report:feedback-gate": "node dist/scripts/voluntary-feedback-gate.js",
+    "prereport:ai-privacy": "npm run build",
+    "report:ai-privacy": "node dist/scripts/ai-telemetry-privacy-audit.js",
     "review:experience": "node dist/scripts/core-experience-blind-review.js",
     "prereport:release": "npm run build",
     "report:release": "node dist/scripts/core-dialogue-release-decision.js",

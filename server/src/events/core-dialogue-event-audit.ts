@@ -4,6 +4,7 @@ import {
   coreDialogueMinimumEventNames,
   type CoreDialogueEventName,
 } from "./core-dialogue-events.js";
+import type { EvidenceProvenanceV1 } from "../release/evidence-integrity.js";
 
 export interface StoredCoreDialogueEvent {
   id: string;
@@ -28,9 +29,10 @@ export interface CoreDialogueEventAuditReport {
   countsByEvent: Record<string, number>;
   minimumCoverage: Record<typeof coreDialogueMinimumEventNames[number], "observed" | "not_observed">;
   notes: string[];
+  provenance?: EvidenceProvenanceV1;
 }
 
-export function auditCoreDialogueEvents(events: StoredCoreDialogueEvent[], now = new Date()): CoreDialogueEventAuditReport {
+export function auditCoreDialogueEvents(events: StoredCoreDialogueEvent[], now = new Date(), provenance?: EvidenceProvenanceV1): CoreDialogueEventAuditReport {
   const current = events.filter((event) => event.eventVersion === CORE_DIALOGUE_EVENT_VERSION);
   const legacy = events.filter((event) => event.eventVersion !== CORE_DIALOGUE_EVENT_VERSION);
   const keys = current.flatMap((event) => event.eventKey ? [event.eventKey] : []);
@@ -60,7 +62,7 @@ export function auditCoreDialogueEvents(events: StoredCoreDialogueEvent[], now =
   const notes = [
     "未观察到某个最小事件不等于实现失败；它可能只是审计窗口内没有对应用户路径。",
     "事件审计只验证事件质量与覆盖，不计算产品北极星或自动发布门禁。",
-    "回访五级状态已进入 event-v2；task_type 仍未进入生产事件。",
+    `当前审计目标为 ${CORE_DIALOGUE_EVENT_VERSION}；task_type 仍未进入生产事件。`,
   ];
   return {
     schemaVersion: "core-dialogue-event-audit-v2",
@@ -75,18 +77,22 @@ export function auditCoreDialogueEvents(events: StoredCoreDialogueEvent[], now =
     countsByEvent,
     minimumCoverage,
     notes,
+    ...(provenance ? { provenance } : {}),
   };
 }
 
 export function renderCoreDialogueEventAuditMarkdown(report: CoreDialogueEventAuditReport): string {
   return [
-    "# Core Dialogue Event v2 审计报告",
+    `# Core Dialogue Event ${CORE_DIALOGUE_EVENT_VERSION} 审计报告`,
     "",
     `- 生成时间：${report.generatedAt}`,
     `- 状态：**${report.status}**`,
     `- 当前版本事件：${report.auditedRows}`,
     `- 历史事件：${report.legacyRows}`,
     `- replay 事件：${report.replayRows}`,
+    ...(report.provenance ? [
+      `- Git：${report.provenance.gitCommit}${report.provenance.gitDirty ? "（工作区有未提交改动）" : ""}`,
+    ] : []),
     "",
     "## 最小事件覆盖",
     "",

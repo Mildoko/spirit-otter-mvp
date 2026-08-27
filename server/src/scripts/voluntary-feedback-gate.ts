@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { evaluateVoluntaryFeedbackGate, renderVoluntaryFeedbackGateMarkdown, type ResearchSafetyReviewV1 } from "../research/voluntary-feedback-gate.js";
+import { resolveEvidenceProvenance } from "../release/evidence-integrity.js";
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const value = (name: string) => process.argv.find((item) => item.startsWith(`--${name}=`))?.slice(name.length + 3)
@@ -15,7 +16,13 @@ try {
     select: { id: true, eventType: true, eventVersion: true, metadataJson: true, occurredAt: true },
     orderBy: { occurredAt: "asc" },
   });
-  const report = evaluateVoluntaryFeedbackGate({ events, ...(safetyReview ? { safetyReview } : {}) });
+  const now = new Date();
+  const report = evaluateVoluntaryFeedbackGate({
+    events,
+    now,
+    provenance: resolveEvidenceProvenance(workspaceRoot, now),
+    ...(safetyReview ? { safetyReview } : {}),
+  });
   const outputDirectory = resolve(workspaceRoot, "test-results");
   mkdirSync(outputDirectory, { recursive: true });
   writeFileSync(resolve(outputDirectory, "voluntary-feedback-gate.json"), JSON.stringify(report, null, 2), "utf8");

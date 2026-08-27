@@ -1,4 +1,5 @@
 import { CORE_DIALOGUE_EVENT_VERSION, coreDialogueEventSchemas, type CoreDialogueEventName } from "../events/core-dialogue-events.js";
+import type { EvidenceProvenanceV1 } from "../release/evidence-integrity.js";
 
 export type ProductMetricAvailability = "measurable" | "proxy_observational" | "not_measurable";
 
@@ -33,6 +34,7 @@ export interface CoreDialogueProductMetricsReport {
   feedbackResponsePathDistribution: Record<string, { helpful: number; notHelpful: number; total: number }>;
   releaseDecision: "not_determined";
   notes: string[];
+  provenance?: EvidenceProvenanceV1;
 }
 
 interface ValidEvent { eventType: CoreDialogueEventName; metadata: Record<string, unknown>; occurredAt: Date }
@@ -45,7 +47,7 @@ function uniqueIds(events: ValidEvent[], eventType: CoreDialogueEventName, field
   return new Set(events.filter((event) => event.eventType === eventType).flatMap((event) => typeof event.metadata[field] === "string" ? [String(event.metadata[field])] : []));
 }
 
-export function calculateCoreDialogueProductMetrics(events: ProductMetricEvent[], now = new Date()): CoreDialogueProductMetricsReport {
+export function calculateCoreDialogueProductMetrics(events: ProductMetricEvent[], now = new Date(), provenance?: EvidenceProvenanceV1): CoreDialogueProductMetricsReport {
   const current = events.filter((event) => event.eventVersion === CORE_DIALOGUE_EVENT_VERSION);
   const invalidReasons: string[] = [];
   const valid: ValidEvent[] = [];
@@ -151,6 +153,7 @@ export function calculateCoreDialogueProductMetrics(events: ProductMetricEvent[]
       "代理指标不得作为核心体验改善或发布通过的单独证据。",
       "不计算综合北极星分数；样本量与受控研究上下文必须与报告一并解释。",
     ],
+    ...(provenance ? { provenance } : {}),
   };
 }
 
@@ -163,6 +166,9 @@ export function renderCoreDialogueProductMetricsMarkdown(report: CoreDialoguePro
     `- 事件版本：${report.eventVersion}`,
     `- 审计事件：${report.auditedEvents}`,
     `- 发布结论：${report.releaseDecision}`,
+    ...(report.provenance ? [
+      `- Git：${report.provenance.gitCommit}${report.provenance.gitDirty ? "（工作区有未提交改动）" : ""}`,
+    ] : []),
     "",
     "| 指标 | 可测性 | 分子 / 分母 | 数值 | 说明 |",
     "| --- | --- | ---: | ---: | --- |",

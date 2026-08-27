@@ -28,6 +28,8 @@ LANGFUSE_SECRET_KEY="sk_..."
 LANGFUSE_BASE_URL="https://cloud.langfuse.com"
 ```
 
+运行 `npm run report:ai-privacy` 会生成不含密钥内容的隐私预检报告。`status=passed` 表示元数据白名单和 HTTPS 边界有效；`readiness=configuration_pending` 表示尚未提供 Langfuse 凭据，不能描述为已接通。
+
 参考实现依据：[OpenTelemetry JS Node SDK](https://opentelemetry.io/docs/languages/js/getting-started/nodejs/) 与 [Langfuse OpenTelemetry 集成](https://langfuse.com/docs/observability/sdk/opentelemetry)。
 
 ## 三人盲评与 50 段门槛
@@ -60,3 +62,9 @@ LANGFUSE_BASE_URL="https://cloud.langfuse.com"
 ## v1 到 v2 迁移说明
 
 发布决策报告升级为 `core-dialogue-release-decision-v2`。旧的 `core-experience-review-result-v1` 不再足以证明盲评完整性，因为它只有人数，没有唯一评审者标识与揭盲前独立完成确认。迁移时以模板重新填写 v2，不得把自动评分或同一人的重复记录补成三名评审者。冻结体验阈值、金标、Judge 和样本没有为了当前实现而修改；本次只把已有研究约定变成不可绕过的检查。
+
+## P0.5 证据来源完整性扩展
+
+P0.5 影响 `EX-07`、`EX-09`、`EX-10`，并保持安全与现实边界、核心体验、产品策略、Eval 指标的优先顺序。它在不调整任何金标、冻结样本、阈值或 Judge 的前提下，为自动 Eval、事件审计、产品指标和自愿反馈报告增加 Git 来源校验。发布决策只接受与当前 `HEAD` 完全一致、且生成时工作区干净的报告；当前工作区自身也必须干净。人工盲评结果还必须填写实际受评候选的 `candidateCommit`。缺失来源信息、旧 SHA 或 dirty 报告一律保持 `hold`，不能用重新命名文件或复制旧报告绕过。
+
+该扩展不把三人盲评、50 段真实自愿反馈或人工安全复核自动化，也不会合成待补数据。事件与产品指标报告仍必须从真实 `event-v4` 数据库生成。
