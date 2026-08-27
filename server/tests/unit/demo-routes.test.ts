@@ -105,9 +105,12 @@ describe("demo mode API contract", () => {
   });
 
   it("exposes safe runtime metadata", async () => {
-    expect((await app.inject({ method: "GET", url: "/api/runtime" })).json()).toEqual({
-      mode: "demo", persistent: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: false, sceneWorldV1Enabled: true, audioV1Enabled: true, cloudTtsEnabled: false, memoryV2Enabled: true,
+    const runtime = (await app.inject({ method: "GET", url: "/api/runtime" })).json();
+    expect(runtime).toMatchObject({
+      mode: "demo", persistent: false, externalPreview: false, modelSource: "local_fallback", buildVersion: "test-version", emotionDiagnosticsAvailable: false, sceneWorldV1Enabled: true, audioV1Enabled: true, cloudTtsEnabled: false, memoryV2Enabled: true,
     });
+    expect(runtime.capabilityManifest).toMatchObject({ schemaVersion: 1, manifestVersion: "capability-manifest-v1", runtimeMode: "demo" });
+    expect(runtime.capabilityManifest.capabilities).toContainEqual(expect.objectContaining({ id: "external_action", status: "unavailable" }));
   });
 
   it("lists and controls trusted memories and relations", async () => {
@@ -188,7 +191,7 @@ describe("external preview access control", () => {
     const env = loadEnv({
       NODE_ENV: "test", OTTER_RUNTIME_MODE: "demo", DATABASE_URL: "postgresql://unused/unused",
       SESSION_SECRET: "preview-test-secret-with-more-than-thirty-two-characters", COOKIE_SECURE: "false",
-      WEB_ORIGIN: "http://127.0.0.1:3001", LLM_API_KEY: "", BUILD_VERSION: "preview-test",
+      WEB_ORIGIN: "http://127.0.0.1:3001", LLM_API_KEY: "configured", BUILD_VERSION: "preview-test",
       EXTERNAL_PREVIEW_ENABLED: "true", EXTERNAL_PREVIEW_CODE: previewCode, EXTERNAL_PREVIEW_MAX_SESSIONS: "1",
     });
     app = await buildApp(env, undefined, { demoStore: new DemoStore() });

@@ -30,6 +30,42 @@ export type TopicCategory =
   | "creative_coauthoring"
   | "light_future";
 export type AgentIdV1 = "zen_deer" | "spirit_otter" | "bird_courier";
+export type CapabilityStatusV1 = "available" | "demo_only" | "unavailable";
+export type CapabilityDataModeV1 = "persistent" | "ephemeral" | "none";
+export type ProductCapabilityIdV1 =
+  | "agent.chat"
+  | "voice.playback"
+  | "memory.long_term"
+  | "community.read"
+  | "community.write"
+  | "external_action"
+  | "feedback.voluntary"
+  | "scene.world";
+
+export interface ProductCapabilityV1 {
+  id: ProductCapabilityIdV1;
+  status: CapabilityStatusV1;
+  dataMode: CapabilityDataModeV1;
+  requiresExplicitAuthorization: boolean;
+  agentIds: AgentIdV1[];
+  reasonCode?: "feature_disabled" | "research_only" | "not_implemented" | "runtime_mode";
+}
+
+export interface AgentCapabilityV1 {
+  agentId: AgentIdV1;
+  chat: CapabilityStatusV1;
+  voicePlayback: CapabilityStatusV1;
+  longTermMemory: CapabilityStatusV1;
+  externalActions: "unavailable";
+}
+
+export interface CapabilityManifestV1 {
+  schemaVersion: 1;
+  manifestVersion: "capability-manifest-v1";
+  runtimeMode: RuntimeMode;
+  agents: AgentCapabilityV1[];
+  capabilities: ProductCapabilityV1[];
+}
 export type AudioSfxV1 = "reply_ripple" | "invite_chime" | "none";
 export type SoundscapePolicyV1 = "normal" | "reduced" | "silent";
 
@@ -546,6 +582,7 @@ export interface EmotionCorrectionV1 {
 export interface RuntimeInfo {
   mode: RuntimeMode;
   persistent: boolean;
+  externalPreview: boolean;
   modelSource: "cloud_model" | "local_fallback";
   buildVersion: string;
   emotionDiagnosticsAvailable: boolean;
@@ -553,6 +590,7 @@ export interface RuntimeInfo {
   audioV1Enabled: boolean;
   cloudTtsEnabled: boolean;
   memoryV2Enabled: boolean;
+  capabilityManifest: CapabilityManifestV1;
 }
 
 export interface PublicEmotionFeedback {

@@ -67,7 +67,7 @@ export function createCoreExperienceBlindReview(input: {
       instructions: [
         "评审前不得查看 Eval 分数或答案键。",
         "逐案例独立选择 A 更好、无明显差异、B 更好，并记录体验红旗。",
-        "至少两名评审者完成后再揭盲；分歧不能用自动分数裁决。",
+        "至少三名评审者完成后再揭盲；分歧不能用自动分数裁决。",
       ],
     },
     answerKey: {

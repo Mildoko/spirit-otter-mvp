@@ -6,9 +6,10 @@ interface Props {
   error: string | null;
   persistent: boolean;
   soundEnabled: boolean;
+  externalPreview: boolean;
 }
 
-export function Onboarding({ onSubmit, error, persistent, soundEnabled }: Props) {
+export function Onboarding({ onSubmit, error, persistent, soundEnabled, externalPreview }: Props) {
   const consents = [
     ["adult", "我确认自己已满 18 岁。"],
     ["ai", "我知道鹿禅是 AI 鹿灵体，不是真人、宗教导师、治疗师或医疗服务。"],
@@ -35,7 +36,7 @@ export function Onboarding({ onSubmit, error, persistent, soundEnabled }: Props)
       <section className="onboarding-card" aria-labelledby="welcome-title">
         <div className="brand-mark" aria-hidden="true">BZ</div>
         <img className="onboarding-spirit" src={spiritDeerPng} alt="安坐的鹿灵鹿禅预览" />
-        <p className="eyebrow">{persistent ? "预约式现场体验" : "受控内部体验版"}</p>
+        <p className="eyebrow">{persistent ? "预约式现场体验" : externalPreview ? "受控外网体验版" : "受控内部体验版"}</p>
         <h1 id="welcome-title">先在这里，慢一点。</h1>
         <p className="lead">鹿禅会先听你说，也会在你愿意时，用一句短话或一则禅门故事，陪你照见眼前的一件事。</p>
         <div className="boundary-note">

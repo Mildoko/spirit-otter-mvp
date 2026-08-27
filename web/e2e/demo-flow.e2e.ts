@@ -312,13 +312,14 @@ test("浏览器不支持语音识别时给出可见反馈", async ({ page }) => 
   await expect(page.locator(".operation-notice")).toContainText("当前浏览器不支持语音识别，请使用文字输入");
 });
 
-test("手机竖屏进入后提示切换横屏并允许保留文字退路", async ({ page }) => {
+test("手机竖屏进入后强制切换横屏且不能绕过", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   const prompt = page.getByRole("dialog", { name: "请把手机横过来" });
   await expect(prompt).toBeVisible();
   await expect(prompt.getByRole("button", { name: "全屏并尝试横屏" })).toBeVisible();
-  await prompt.getByRole("button", { name: "暂时竖屏使用" }).click();
+  await expect(prompt.getByRole("button", { name: "暂时竖屏使用" })).toHaveCount(0);
+  await page.setViewportSize({ width: 844, height: 390 });
   await expect(prompt).toBeHidden();
   await expect(page.getByRole("region", { name: "灵体水面世界" })).toBeVisible();
 });

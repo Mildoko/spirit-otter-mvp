@@ -314,6 +314,13 @@ export function App() {
     finishOuterExit(innerDialogWasOpenRef.current);
   };
 
+  const activateAgentFromOuter = (agentId: AgentIdV1) => {
+    if (busy) return;
+    activateAgent(agentId);
+    dispatchOuter({ type: "return" });
+    finishOuterExit(true);
+  };
+
   const carryOuterItemInside = (item: PublicPortalItemV01, target: AgentIdV1) => {
     setCarriedOuterItem({ item, target });
     setActiveAgentId(target);
@@ -362,12 +369,12 @@ export function App() {
     } finally { setBusy(false); }
   };
 
-  if (loading) return <div className="loading-screen"><div className="loading-ripple" /><span>水面正在变得清晰…</span></div>;
-  if (!bootstrap) return <Onboarding onSubmit={redeem} error={error} persistent={Boolean(runtime?.persistent)} soundEnabled={Boolean(runtime?.audioV1Enabled)} />;
+  if (loading) return <><LandscapePrompt /><div className="loading-screen"><div className="loading-ripple" /><span>水面正在变得清晰…</span></div></>;
+  if (!bootstrap) return <><LandscapePrompt /><Onboarding onSubmit={redeem} error={error} persistent={Boolean(runtime?.persistent)} soundEnabled={Boolean(runtime?.audioV1Enabled)} externalPreview={Boolean(runtime?.externalPreview)} /></>;
 
   return (
     <main className={`app-shell scene-${scene}${sceneWorldEnabled ? " scene-world-shell" : ""}${outerCircleActive ? " outer-circle-active" : ""}`}>
-      {!outerCircleActive && <LandscapePrompt />}
+      <LandscapePrompt />
       {!outerCircleActive && !sceneWorldEnabled && <><div className="water-light" aria-hidden="true" /><div className="water-ripple ripple-one" aria-hidden="true" /><div className="water-ripple ripple-two" aria-hidden="true" /></>}
       {!outerCircleActive && sceneWorldEnabled && <SceneWorld
         action={visualAction}
@@ -392,7 +399,7 @@ export function App() {
         activeAgentId={activeAgentId}
         activeAgentName={activeAgent.name}
       />}
-      {!outerCircleActive && scene !== "safety_plain" && <AgentSquadDock activeAgentId={activeAgentId} disabled={busy} onActivate={activateAgent} />}
+      {scene !== "safety_plain" && <AgentSquadDock activeAgentId={activeAgentId} disabled={busy} onActivate={outerCircleActive ? activateAgentFromOuter : activateAgent} />}
       <header className="topbar">
         <div className="brand-stack">
           <div className="brand"><span className="brand-dot" /> <strong>BoonZoom</strong><span>{outerCircleActive ? "外圈 · 万象廊" : `内圈 · ${activeAgent.name}在席`}</span></div>
@@ -410,7 +417,7 @@ export function App() {
       </header>
 
       {runtime?.mode === "demo" && <aside className="runtime-banner" role="status">
-        <strong>本地演示，不保存数据</strong>
+        <strong>{runtime.externalPreview ? "受控外网体验，不保存数据" : "本地演示，不保存数据"}</strong>
         <span>{lastResponseSource === "cloud_model" || (!lastResponseSource && runtime.modelSource === "cloud_model") ? "真实模型" : lastResponseSource === "static_safety" ? "安全静态响应" : "规则模拟"}</span>
         <small>版本 {runtime.buildVersion}</small>
       </aside>}

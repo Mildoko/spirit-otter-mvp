@@ -1,6 +1,6 @@
 # BoonZoom 多角色陪伴与社区联动原型
 
-面向受控、预约式成年人研究的 Web 原型。产品蓝图包含三个独立公开 Agent：鹿禅负责禅宗观照与传统文化，`tata` 负责温馨体贴的日常陪伴，飞儿负责生活秘书、兴趣档案与活动发现。当前可运行界面仍以鹿禅为主，`tata`、飞儿的完整入口以及社区能力尚未开放。
+面向受控、预约式成年人研究的 Web 原型。产品蓝图包含三个独立公开 Agent：鹿禅负责禅宗观照与传统文化，`tata` 负责温馨体贴的日常陪伴，飞儿负责生活秘书、兴趣档案与活动发现。当前三个聊天入口均可选择；长期记忆、语音、社区写入和现实外部行动是否可用，以 `GET /api/runtime` 返回的 `capabilityManifest` 为唯一运行时真相源。
 
 目标世界采用“内圈私密船上世界—中圈熟人连接—外圈公共社区”的三圈结构。旧版“水下/水面/漂浮物”情绪状态体系已经废弃；湖面和船只仅可作为视觉环境，不能替代清楚的权限、隐私和状态说明。完整设计见 `docs/three-circle-world-and-community-linkage-v1.md`。
 
@@ -18,6 +18,9 @@
 - 30 天保留、用户导出/删除、本地匿名研究导出
 - 一个统一鹿灵资产、CSS 多场景与无沉浸的安全状态
 - 鹿禅、tata、飞儿的独立角色注册与语音边界；当前运行时仍以鹿禅为主
+- 机器可读 Capability Manifest，明确可用、仅演示、不可用及持久/临时数据模式
+- 可选的 OpenTelemetry + Langfuse 元数据追踪；不采集 Prompt、回复、身份、会话或记忆内容
+- 三人独立盲评完整性与 50 个自愿完成片段反馈的扩大体验硬门槛
 - 120 条冻结中文安全语料和自动回归
 
 ## 本地启动
@@ -45,6 +48,7 @@ npm test
 npm run test:experience
 npm run test:eval:core
 npm run report:product-metrics
+npm run report:feedback-gate
 npm run report:release
 npm run build
 npm run cleanup
@@ -61,7 +65,9 @@ Core Dialogue Eval v1 的无密钥确定性通道使用 `npm run test:eval:core`
 
 第二阶段 Core Dialogue Event v1 已建立服务端权威事件、字段白名单、隐私校验和数据库幂等键。迁移数据库并产生受控测试事件后，可运行 `npm run report:events` 审计事件质量；该报告不计算线上北极星。实现边界见 `docs/core-dialogue-events-v1.md`。
 
-第三阶段新增用户主动选择的五级回访结果、`event-v2`、受控产品指标、基线/候选盲评包和非自动发布决策报告。运行方式及可测性边界见 `docs/core-dialogue-phase3-v1.md`。缺少人工体验结果时，发布决策必须为 `hold`。
+第三阶段新增用户主动选择的五级回访结果、`event-v2`、受控产品指标、基线/候选盲评包和非自动发布决策报告。运行方式及可测性边界见 `docs/core-dialogue-phase3-v1.md`。缺少三人独立盲评或 50 个完整自愿反馈门槛报告时，发布决策必须为 `hold`。
+
+P0 能力真相源、隐私追踪和研究门槛的配置、数据口径与迁移说明见 `docs/p0-capability-observability-research-gates-v1.md`。
 
 生产环境使用 `NODE_ENV=production`，缺少模型密钥时服务会拒绝启动。`GET /api/health` 只返回可用状态，不返回厂商、模型或内部错误。
 

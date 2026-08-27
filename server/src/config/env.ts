@@ -43,6 +43,10 @@ const envSchema = z.object({
   EXTERNAL_PREVIEW_ENABLED: booleanFromStringDefaultFalse,
   EXTERNAL_PREVIEW_CODE: z.string().max(64).default(""),
   EXTERNAL_PREVIEW_MAX_SESSIONS: z.coerce.number().int().min(1).max(100).default(20),
+  AI_OBSERVABILITY_ENABLED: booleanFromStringDefaultFalse,
+  LANGFUSE_PUBLIC_KEY: z.string().default(""),
+  LANGFUSE_SECRET_KEY: z.string().default(""),
+  LANGFUSE_BASE_URL: z.string().url().default("https://cloud.langfuse.com"),
   APP_TIME_ZONE: z.string().min(1).default("Asia/Shanghai"),
   AZURE_SPEECH_KEY: z.string().default(""),
   AZURE_SPEECH_REGION: z.string().default(""),
@@ -97,6 +101,28 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   }
   if (result.data.EXTERNAL_PREVIEW_ENABLED && result.data.EXTERNAL_PREVIEW_CODE.trim().length < 10) {
     throw new Error("外网受控体验码至少需要 10 个字符");
+  }
+  if (result.data.EXTERNAL_PREVIEW_ENABLED) {
+    if (!result.data.LLM_API_KEY.trim()) {
+      throw new Error("外网受控体验必须配置 DeepSeek API 密钥，禁止以本地降级回复冒充真实模型");
+    }
+    if (result.data.LLM_PROVIDER.trim().toLowerCase() !== "deepseek") {
+      throw new Error("外网受控体验当前只允许使用 DeepSeek 模型供应商");
+    }
+    const model = result.data.LLM_MODEL.trim().toLowerCase();
+    if (model !== "deepseek-v4-flash" && model !== "deepseek-v4-pro") {
+      throw new Error("外网受控体验只允许 deepseek-v4-flash 或 deepseek-v4-pro");
+    }
+    const endpoint = new URL(result.data.LLM_BASE_URL);
+    if (endpoint.protocol !== "https:" || endpoint.hostname !== "api.deepseek.com") {
+      throw new Error("外网受控体验必须使用 DeepSeek 官方 HTTPS API 地址 https://api.deepseek.com");
+    }
+  }
+  if (result.data.AI_OBSERVABILITY_ENABLED && (!result.data.LANGFUSE_PUBLIC_KEY.trim() || !result.data.LANGFUSE_SECRET_KEY.trim())) {
+    throw new Error("启用 AI 可观测性时必须同时配置 LANGFUSE_PUBLIC_KEY 和 LANGFUSE_SECRET_KEY");
+  }
+  if (result.data.AI_OBSERVABILITY_ENABLED && new URL(result.data.LANGFUSE_BASE_URL).protocol !== "https:") {
+    throw new Error("AI 可观测性只允许通过 HTTPS 连接 Langfuse");
   }
   try {
     new Intl.DateTimeFormat("zh-CN", { timeZone: result.data.APP_TIME_ZONE }).format(new Date());

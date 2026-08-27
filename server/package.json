@@ -10,6 +10,7 @@
     "dev:demo": "tsx watch src/demo-server.ts",
     "start:lab": "node dist/lab-server.js",
     "start:demo": "node dist/demo-server.js",
+    "preflight:external-preview": "node dist/scripts/external-preview-preflight.js",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -34,39 +35,45 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "invites": "tsx src/scripts/generate-invites.ts",
     "cleanup": "tsx src/scripts/cleanup.ts",
-    "export:research": "tsx src/scripts/export-research.ts"
-    ,"prereport:events": "npm run build"
-    ,"report:events": "node dist/scripts/core-dialogue-event-audit.js"
-    ,"prereport:product-metrics": "npm run build"
-    ,"report:product-metrics": "node dist/scripts/core-dialogue-product-metrics.js"
-    ,"review:experience": "node dist/scripts/core-experience-blind-review.js"
-    ,"prereport:release": "npm run build"
-    ,"report:release": "node dist/scripts/core-dialogue-release-decision.js"
-    ,"prepreflight": "npm run build"
-    ,"preflight": "node dist/scripts/preflight.js"
-    ,"preinit:full": "npm run build"
-    ,"init:full": "node dist/scripts/init-full.js"
-    ,"prereport:acceptance": "npm run build"
-    ,"report:acceptance": "node dist/scripts/acceptance-report.js"
-    ,"pretest:model": "npm run build"
-    ,"test:model": "node dist/scripts/model-acceptance.js"
-    ,"test:model:low-signal": "node dist/scripts/model-acceptance.js --suite=low-signal"
-    ,"test:model:expression": "node dist/scripts/model-acceptance.js --suite=expression"
-    ,"test:emotion": "node dist/scripts/emotion-evaluation.js --validate-only"
-    ,"test:model:emotion": "node dist/scripts/emotion-evaluation.js --model"
-    ,"report:emotion": "node dist/scripts/emotion-evaluation.js && node dist/scripts/emotion-expression-report.js"
-    ,"test:memory": "node dist/scripts/memory-evaluation.js"
-    ,"test:model:memory": "node dist/scripts/memory-evaluation.js --model"
-    ,"test:healing": "vitest run tests/unit/healing-engine.test.ts tests/unit/healing-routes.test.ts"
-    ,"pretest:eval:healing": "npm run build"
-    ,"test:eval:healing": "node dist/scripts/healing-eval.js"
-    ,"prereview:healing": "npm run build"
-    ,"review:healing": "node dist/scripts/healing-blind-review.js"
+    "export:research": "tsx src/scripts/export-research.ts",
+    "prereport:events": "npm run build",
+    "report:events": "node dist/scripts/core-dialogue-event-audit.js",
+    "prereport:product-metrics": "npm run build",
+    "report:product-metrics": "node dist/scripts/core-dialogue-product-metrics.js",
+    "prereport:feedback-gate": "npm run build",
+    "report:feedback-gate": "node dist/scripts/voluntary-feedback-gate.js",
+    "review:experience": "node dist/scripts/core-experience-blind-review.js",
+    "prereport:release": "npm run build",
+    "report:release": "node dist/scripts/core-dialogue-release-decision.js",
+    "prepreflight": "npm run build",
+    "preflight": "node dist/scripts/preflight.js",
+    "preinit:full": "npm run build",
+    "init:full": "node dist/scripts/init-full.js",
+    "prereport:acceptance": "npm run build",
+    "report:acceptance": "node dist/scripts/acceptance-report.js",
+    "pretest:model": "npm run build",
+    "test:model": "node dist/scripts/model-acceptance.js",
+    "test:model:low-signal": "node dist/scripts/model-acceptance.js --suite=low-signal",
+    "test:model:expression": "node dist/scripts/model-acceptance.js --suite=expression",
+    "test:emotion": "node dist/scripts/emotion-evaluation.js --validate-only",
+    "test:model:emotion": "node dist/scripts/emotion-evaluation.js --model",
+    "report:emotion": "node dist/scripts/emotion-evaluation.js && node dist/scripts/emotion-expression-report.js",
+    "test:memory": "node dist/scripts/memory-evaluation.js",
+    "test:model:memory": "node dist/scripts/memory-evaluation.js --model",
+    "test:healing": "vitest run tests/unit/healing-engine.test.ts tests/unit/healing-routes.test.ts",
+    "pretest:eval:healing": "npm run build",
+    "test:eval:healing": "node dist/scripts/healing-eval.js",
+    "prereview:healing": "npm run build",
+    "review:healing": "node dist/scripts/healing-blind-review.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.1.0",
     "@fastify/rate-limit": "^10.3.0",
+    "@langfuse/otel": "^5.10.1",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-trace-node": "^2.10.0",
     "@otter/shared": "0.1.0",
     "@prisma/client": "^6.14.0",
     "dotenv": "^17.2.1",

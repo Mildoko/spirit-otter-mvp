@@ -48,11 +48,13 @@ npm run report:product-metrics
 npm run review:experience -- --baseline=<基线.json> --candidate=<候选.json> --seed=<随机种子>
 ```
 
-盲评包和答案键分开输出。至少两名评审者在查看 Eval 分数和答案键前独立判断具体承接、用户节奏、角色连续性、低压力和总体偏好。结果按 `research/core-experience/review-result.template.json` 形成机器可读记录。
+盲评包和答案键分开输出。至少三名评审者在查看 Eval 分数和答案键前独立判断具体承接、用户节奏、角色连续性、低压力和总体偏好。结果按 `research/core-experience/review-result.template.json` 形成机器可读记录；v2 结果必须包含三个唯一的匿名评审者标识和独立盲评确认。
+
+受控研究完成后运行 `npm run report:feedback-gate`。只有至少 50 个同时填写理解与变化项的唯一片段、冻结的四项体验阈值全部满足，且安全/依赖/隐私严重事件人工复核为零，门槛才会通过。赞踩但未填写两项详情的提交不会被冒充为完整研究片段。
 
 ## 发布决策
 
-在 Eval、事件审计、产品指标和人工评审文件齐全后运行：
+在 Eval、事件审计、产品指标、人工评审文件和自愿反馈门槛报告齐全后运行：
 
 ```text
 npm run report:release

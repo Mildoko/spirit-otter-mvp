@@ -12,11 +12,18 @@ const eventAudit = read(value("events") ?? "test-results/core-dialogue-event-aud
 const productMetrics = read(value("metrics") ?? "test-results/core-dialogue-product-metrics.json");
 const manualPath = value("manual") ?? "test-results/core-experience-review-result.json";
 const manualReview = existsSync(resolve(root, manualPath)) ? read(manualPath) as ManualExperienceReviewResult : undefined;
+const feedbackGatePath = value("feedback-gate") ?? "test-results/voluntary-feedback-gate.json";
+const voluntaryFeedbackGate = existsSync(resolve(root, feedbackGatePath)) ? read(feedbackGatePath) as {
+  schemaVersion: "voluntary-feedback-gate-v1";
+  status: "passed" | "pending" | "blocked" | "invalid";
+  completedSegments: number;
+} : undefined;
 const report = decideCoreDialogueRelease({
   evalStatus: evalReport.runStatus,
   eventAuditStatus: eventAudit.status,
   productMetricsStatus: productMetrics.status,
   ...(manualReview ? { manualReview } : {}),
+  ...(voluntaryFeedbackGate ? { voluntaryFeedbackGate } : {}),
   candidateDeployed: process.argv.includes("--candidate-deployed") || process.env.npm_config_candidate_deployed === "true",
 });
 const outputDirectory = resolve(root, "test-results");

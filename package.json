@@ -10,6 +10,7 @@
     "dev:lab": "npm run start:lab -w @otter/server",
     "predev:demo": "npm run build",
     "dev:demo": "npm run start:demo -w @otter/server",
+    "preflight:external-preview": "npm run preflight:external-preview -w @otter/server",
     "test": "npm run test -w @otter/shared && npm run test -w @otter/server && npm run test -w @otter/web",
     "pretest:e2e": "npm run build",
     "test:e2e": "npm run test:e2e -w @otter/web",
@@ -29,6 +30,7 @@
     "export:research": "npm run export:research -w @otter/server"
     ,"report:events": "npm run report:events -w @otter/server"
     ,"report:product-metrics": "npm run report:product-metrics -w @otter/server"
+    ,"report:feedback-gate": "npm run report:feedback-gate -w @otter/server"
     ,"prereview:experience": "npm run build -w @otter/server"
     ,"review:experience": "node server/dist/scripts/core-experience-blind-review.js"
     ,"prereport:release": "npm run build -w @otter/server"

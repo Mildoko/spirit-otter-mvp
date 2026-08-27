@@ -1,20 +1,19 @@
 import { useEffect, useState } from "react";
 
-const portraitMobileQuery = "(max-width: 960px) and (orientation: portrait)";
+const portraitQuery = "(orientation: portrait)";
 
 export function LandscapePrompt() {
-  const [portraitMobile, setPortraitMobile] = useState(() => window.matchMedia(portraitMobileQuery).matches);
-  const [dismissed, setDismissed] = useState(false);
-  const [notice, setNotice] = useState("横屏能完整看到鹿禅的水面场景");
+  const [portrait, setPortrait] = useState(() => window.matchMedia(portraitQuery).matches);
+  const [notice, setNotice] = useState("这次体验只提供横屏版本");
 
   useEffect(() => {
-    const query = window.matchMedia(portraitMobileQuery);
-    const update = () => setPortraitMobile(query.matches);
+    const query = window.matchMedia(portraitQuery);
+    const update = () => setPortrait(query.matches);
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
 
-  if (!portraitMobile || dismissed) return null;
+  if (!portrait) return null;
 
   const requestLandscape = async () => {
     let fullscreenWorked = Boolean(document.fullscreenElement);
@@ -38,10 +37,9 @@ export function LandscapePrompt() {
 
   return <section className="landscape-prompt" role="dialog" aria-modal="true" aria-labelledby="landscape-title">
     <div className="landscape-phone" aria-hidden="true"><span /></div>
-    <p className="eyebrow">横屏场景</p>
+    <p className="eyebrow">仅支持横屏</p>
     <h2 id="landscape-title">请把手机横过来</h2>
-    <p>{notice}</p>
+    <p aria-live="polite">{notice}</p>
     <button className="primary-button" onClick={() => void requestLandscape()}>全屏并尝试横屏</button>
-    <button className="landscape-continue" onClick={() => setDismissed(true)}>暂时竖屏使用</button>
   </section>;
 }

@@ -4,6 +4,7 @@ import type { HealingBriefV1, MemoryCandidate, MemoryRelationCandidateV1, Prompt
 import type { AppEnv } from "../../config/env.js";
 import { memoryExtractionSchema } from "../memory/schemas.js";
 import { generatedReplySchema, healingCritiqueSchema, rawSignalsSchema, rawSignalsWithEmotionSchema } from "./schemas.js";
+import { noOpAiTelemetry, type AiTelemetry } from "../../observability/ai-telemetry.js";
 
 export interface LlmMetrics {
   provider: string;
@@ -110,7 +111,7 @@ export class LlmGateway {
   private _lastFailureDetail: string | null = null;
   private readonly _lastFailures: Partial<Record<LlmOperation, LlmFailureDiagnostic | null>> = {};
 
-  constructor(private readonly env: AppEnv) {
+  constructor(private readonly env: AppEnv, private readonly telemetry: AiTelemetry = noOpAiTelemetry) {
     this.capabilities = {
       jsonMode: env.LLM_JSON_MODE,
       structuredOutput: false,
@@ -175,7 +176,7 @@ export class LlmGateway {
       ].join("\n") : "",
     ].join("\n");
     const userPayload = emotionV2Enabled ? JSON.stringify({ recentContext: recentContext.slice(-6), currentUserText: text }) : text;
-    const result = await this.callJsonWithRetry(system, userPayload, emotionV2Enabled ? rawSignalsWithEmotionSchema : rawSignalsSchema, emotionV2Enabled ? 1100 : 700, emotionV2Enabled ? 3 : 2);
+    const result = await this.callJsonWithRetry("analyze", system, userPayload, emotionV2Enabled ? rawSignalsWithEmotionSchema : rawSignalsSchema, emotionV2Enabled ? 1100 : 700, emotionV2Enabled ? 3 : 2);
     this.recordOutcome("analyze", result);
     if (!result.ok) return null;
     const { emotionInference, ...baseSignals } = result.data;
@@ -185,7 +186,7 @@ export class LlmGateway {
 
   async generate(prompt: { system: string; user: string }): Promise<GeneratedReply | null> {
     if (!this.client) return null;
-    const result = await this.callJsonWithRetry(prompt.system, prompt.user, generatedReplySchema, 1000);
+    const result = await this.callJsonWithRetry("generate", prompt.system, prompt.user, generatedReplySchema, 1000);
     this.recordOutcome("generate", result);
     return result.ok ? { ...result.data, metrics: result.metrics } : null;
   }
@@ -198,7 +199,7 @@ export class LlmGateway {
       "不要因为文字温柔就判定通过。只输出 JSON：",
       '{"groundedInsight":true,"addsValueBeyondParaphrase":true,"ruptureRepaired":true,"avoidsEmptyReassurance":true,"avoidsForcedPositiveMeaning":true,"evidence":[]}',
     ].join("\n");
-    const result = await this.callJsonWithRetry(system, JSON.stringify(input), healingCritiqueSchema, 500, 1);
+    const result = await this.callJsonWithRetry("critique_healing", system, JSON.stringify(input), healingCritiqueSchema, 500, 1);
     this.recordOutcome("critique_healing", result);
     return result.ok ? { ...result.data, metrics: result.metrics } : null;
   }
@@ -218,7 +219,7 @@ export class LlmGateway {
       "仍然只输出 JSON：{\"reply\":\"简体中文回复\",\"actionDraft\":null}。",
     ].join("\n\n");
     const user = JSON.stringify({ originalInput: JSON.parse(prompt.user), previousDraft: draft });
-    const result = await this.callJsonWithRetry(system, user, generatedReplySchema, 1000, 1);
+    const result = await this.callJsonWithRetry("repair", system, user, generatedReplySchema, 1000, 1);
     this.recordOutcome("repair", result);
     return result.ok ? { ...result.data, metrics: result.metrics } : null;
   }
@@ -241,7 +242,7 @@ export class LlmGateway {
       "显式关系可用 involves、supports、contradicts、updates、related_to、part_of；推测关系只可用 may_trigger 或 related_to，且 confidence>=0.90。",
       "关系 evidence 也必须逐字来自当前消息；没有两个可解析端点时返回空 relations。",
     ].join("\n");
-    const result = await this.callJsonWithRetry(system, JSON.stringify({
+    const result = await this.callJsonWithRetry("extract_memories", system, JSON.stringify({
       currentUserText: userText,
       currentMemories: currentMemories.slice(0, 6).map((memory) => ({ structuredKey: memory.structuredKey, content: memory.content })).filter((memory) => memory.structuredKey),
     }), memoryExtractionSchema, 1000);
@@ -263,6 +264,7 @@ export class LlmGateway {
   }
 
   private async callJsonWithRetry<T>(
+    operation: LlmOperation,
     system: string,
     user: string,
     schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false; error?: { issues?: Array<{ path: PropertyKey[]; message: string }> } } },
@@ -274,6 +276,12 @@ export class LlmGateway {
     let failure: LlmFailureDiagnostic = { reason: "provider_error", detail: null };
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const started = Date.now();
+      const traceSpan = this.telemetry.startModelCall({
+        operation,
+        provider: this.env.LLM_PROVIDER,
+        model: this.env.LLM_MODEL,
+        attempt: attempt + 1,
+      });
       try {
         const requestBody: ChatCompletionCreateParamsNonStreaming & { thinking?: { type: "disabled" } } = {
           model: this.env.LLM_MODEL,
@@ -292,6 +300,7 @@ export class LlmGateway {
         const content = response.choices[0]?.message.content;
         if (!content) {
           failure = { reason: "empty_response", detail: null };
+          traceSpan.finish({ outcome: "failure", failureReason: failure.reason, latencyMs: Date.now() - started });
           continue;
         }
         let parsed: unknown;
@@ -299,6 +308,7 @@ export class LlmGateway {
           parsed = JSON.parse(content);
         } catch {
           failure = { reason: "invalid_json", detail: null };
+          traceSpan.finish({ outcome: "failure", failureReason: failure.reason, latencyMs: Date.now() - started });
           retryInstruction = "\n\n上一轮不是合法 JSON。重新输出一个完整 JSON 对象，不要 Markdown、解释或代码围栏。";
           continue;
         }
@@ -306,6 +316,7 @@ export class LlmGateway {
         if (!validated.success) {
           const detail = validated.error?.issues?.slice(0, 4).map((issue) => `${issue.path.join(".")}:${issue.message}`).join("; ") ?? null;
           failure = { reason: "schema_error", detail };
+          traceSpan.finish({ outcome: "failure", failureReason: failure.reason, latencyMs: Date.now() - started });
           retryInstruction = `\n\n上一轮 JSON 未通过 Schema：${detail ?? "字段不合法"}。修正这些字段后重新输出完整 JSON；枚举值只能使用上文允许值。`;
           continue;
         }
@@ -316,10 +327,17 @@ export class LlmGateway {
           ...(response.usage?.prompt_tokens !== undefined ? { promptTokens: response.usage.prompt_tokens } : {}),
           ...(response.usage?.completion_tokens !== undefined ? { outputTokens: response.usage.completion_tokens } : {}),
         };
+        traceSpan.finish({
+          outcome: "success",
+          latencyMs: metrics.latencyMs,
+          ...(metrics.promptTokens !== undefined ? { promptTokens: metrics.promptTokens } : {}),
+          ...(metrics.outputTokens !== undefined ? { outputTokens: metrics.outputTokens } : {}),
+        });
         return { ok: true, data: validated.data, metrics };
       } catch (error) {
         const message = error instanceof Error ? `${error.name} ${error.message}`.toLowerCase() : "";
         failure = { reason: message.includes("timeout") || message.includes("timed out") || message.includes("abort") ? "timeout" : "provider_error", detail: null };
+        traceSpan.finish({ outcome: "failure", failureReason: failure.reason, latencyMs: Date.now() - started });
         if (attempt === maxAttempts - 1) return { ok: false, failure };
       }
     }

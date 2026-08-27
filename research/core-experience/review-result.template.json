@@ -1,8 +1,10 @@
 {
-  "schemaVersion": "core-experience-review-result-v1",
+  "schemaVersion": "core-experience-review-result-v2",
   "status": "inconclusive",
   "releaseRecommendation": "hold",
   "reviewerCount": 0,
+  "reviewerIds": [],
+  "blindingAttested": false,
   "evaluatedCases": 0,
   "redFlags": []
 }

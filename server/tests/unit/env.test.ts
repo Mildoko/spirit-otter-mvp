@@ -57,4 +57,24 @@ describe("runtime mode environment", () => {
     expect(() => loadEnv({ ...base, NODE_ENV: "production", OTTER_RUNTIME_MODE: "full", LLM_API_KEY: "configured" })).toThrow(/RESEARCH_CONTACT/);
     expect(loadEnv({ ...base, NODE_ENV: "production", OTTER_RUNTIME_MODE: "full", LLM_API_KEY: "configured", RESEARCH_CONTACT: "拨打项目安全热线 400-000-0000" }).RESEARCH_CONTACT).toContain("安全热线");
   });
+
+  it("requires the official configured DeepSeek channel for external preview", () => {
+    const preview = {
+      ...base,
+      OTTER_RUNTIME_MODE: "demo",
+      EXTERNAL_PREVIEW_ENABLED: "true",
+      EXTERNAL_PREVIEW_CODE: "OTTER-PREVIEW-ABC123",
+    };
+    expect(() => loadEnv(preview)).toThrow(/DeepSeek API/);
+    expect(() => loadEnv({ ...preview, LLM_API_KEY: "configured", LLM_PROVIDER: "other" })).toThrow(/DeepSeek/);
+    expect(() => loadEnv({ ...preview, LLM_API_KEY: "configured", LLM_BASE_URL: "https://example.com" })).toThrow(/官方/);
+    expect(() => loadEnv({ ...preview, LLM_API_KEY: "configured", LLM_MODEL: "deepseek-chat" })).toThrow(/deepseek-v4/);
+    expect(loadEnv({ ...preview, LLM_API_KEY: "configured", LLM_MODEL: "deepseek-v4-flash" }).EXTERNAL_PREVIEW_ENABLED).toBe(true);
+  });
+
+  it("requires complete HTTPS Langfuse configuration when metadata tracing is enabled", () => {
+    expect(() => loadEnv({ ...base, AI_OBSERVABILITY_ENABLED: "true" })).toThrow(/LANGFUSE/);
+    expect(() => loadEnv({ ...base, AI_OBSERVABILITY_ENABLED: "true", LANGFUSE_PUBLIC_KEY: "pk", LANGFUSE_SECRET_KEY: "sk", LANGFUSE_BASE_URL: "http://langfuse.local" })).toThrow(/HTTPS/);
+    expect(loadEnv({ ...base, AI_OBSERVABILITY_ENABLED: "true", LANGFUSE_PUBLIC_KEY: "pk", LANGFUSE_SECRET_KEY: "sk" }).AI_OBSERVABILITY_ENABLED).toBe(true);
+  });
 });

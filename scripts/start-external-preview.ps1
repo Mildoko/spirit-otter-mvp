@@ -1,3 +1,8 @@
+param(
+  [ValidateRange(1, 100)]
+  [int]$MaxSessions = 20
+)
+
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -22,10 +27,6 @@ if (-not (Test-Path -LiteralPath $cloudflaredPath)) {
   Move-Item -LiteralPath $downloadTarget -Destination $cloudflaredPath -Force
 }
 
-Write-Host "Building the external preview..." -ForegroundColor Yellow
-npm run build
-if ($LASTEXITCODE -ne 0) { throw "The web build failed." }
-
 $randomBytes = [byte[]]::new(6)
 $randomGenerator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $randomGenerator.GetBytes($randomBytes)
@@ -41,7 +42,7 @@ $env:COOKIE_SECURE = "false"
 $env:LOCAL_TEST_MODE = "false"
 $env:EXTERNAL_PREVIEW_ENABLED = "true"
 $env:EXTERNAL_PREVIEW_CODE = $previewCode
-$env:EXTERNAL_PREVIEW_MAX_SESSIONS = "20"
+$env:EXTERNAL_PREVIEW_MAX_SESSIONS = "$MaxSessions"
 $env:APP_TIME_ZONE = "Asia/Shanghai"
 $env:EXPRESSION_STYLE_V2 = "true"
 $env:EMOTION_INFERENCE_V2 = "true"
@@ -51,6 +52,14 @@ $env:MEMORY_V2 = "true"
 $env:ASTROLOGY_SKILL_V1 = "true"
 $contactBase64 = "5aaC6ZyA546w5a6e5biu5Yqp77yM6K+356uL5Y2z6IGU57O76YKA6K+35L2g5Y+C5Yqg5L2T6aqM55qE5Lq65oiW5b2T5Zyw57Sn5oCl5pyN5Yqh"
 $env:RESEARCH_CONTACT = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($contactBase64))
+
+Write-Host "Building the external preview..." -ForegroundColor Yellow
+npm run build
+if ($LASTEXITCODE -ne 0) { throw "The web build failed." }
+
+Write-Host "Checking the configured DeepSeek channel..." -ForegroundColor Yellow
+npm run preflight:external-preview
+if ($LASTEXITCODE -ne 0) { throw "DeepSeek is not ready. Check .env.local and account balance before sharing a URL." }
 
 $stdoutLog = Join-Path $previewRoot "server.stdout.log"
 $stderrLog = Join-Path $previewRoot "server.stderr.log"
@@ -70,9 +79,10 @@ try {
   if (-not $ready) { throw "The preview server was not ready within 10 seconds." }
 
   Write-Host ""
-  Write-Host "Spirit Otter controlled external preview is starting." -ForegroundColor Cyan
+  Write-Host "BoonZoom controlled external preview is starting." -ForegroundColor Cyan
   Write-Host "Preview code: $previewCode" -ForegroundColor Green
-  Write-Host "Up to 20 browser sessions; isolated in-memory data; closing this window clears all data."
+  Write-Host "Up to $MaxSessions browser sessions; isolated in-memory data; closing this window clears all data."
+  Write-Host "Landscape-only web experience; portrait screens cannot bypass the rotation gate."
   Write-Host "Share the https://*.trycloudflare.com URL shown below." -ForegroundColor Yellow
   Write-Host "Only share the URL and code with invited friends. Do not publish them publicly."
   Write-Host ""

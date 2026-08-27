@@ -25,10 +25,12 @@ import { validateServerVoiceProfileRegistry } from "./modules/support/audio-cue.
 import { registerSpeechRoute } from "./routes/speech.js";
 import { registerHealingRoutes } from "./routes/healing.js";
 import { registerCommunityRoutes } from "./routes/community.js";
+import { createAiTelemetry, type AiTelemetry } from "./observability/ai-telemetry.js";
 
 export interface AppDependencies {
   orchestrator?: Pick<SupportOrchestrator, "run">;
   demoStore?: DemoStore;
+  aiTelemetry?: AiTelemetry;
 }
 
 export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependencies: AppDependencies = {}): Promise<FastifyInstance> {
@@ -73,7 +75,9 @@ export async function buildApp(env: AppEnv, db: PrismaClient = prisma, dependenc
     });
   });
 
-  const gateway = new LlmGateway(env);
+  const aiTelemetry = dependencies.aiTelemetry ?? createAiTelemetry(env);
+  if (!dependencies.aiTelemetry) app.addHook("onClose", async () => aiTelemetry.shutdown());
+  const gateway = new LlmGateway(env, aiTelemetry);
   if (env.NODE_ENV === "production" && env.OTTER_RUNTIME_MODE === "full") {
     const probe = await gateway.probe();
     if (!probe.ok) throw new Error(`模型兼容探测失败：${probe.reason ?? "unknown"}`);

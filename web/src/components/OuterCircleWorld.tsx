@@ -1,6 +1,8 @@
 import type { AgentIdV1, PublicPortalItemV01 } from "@otter/shared";
 import outerGalleryBackground from "../assets/outer-circle-v0.1/outer-gallery-bg-v6-centered-lit.png";
+import outerGalleryEnvironment from "../assets/outer-circle-v0.1/outer-gallery-environment-clean-v1.png";
 import type { OuterCirclePhase } from "../lib/outer-circle-state";
+import { SpiritBoatStage } from "./SpiritBoatStage";
 
 interface OuterCircleWorldProps {
   phase: Extract<OuterCirclePhase, "loading" | "gallery" | "detail" | "exiting">;
@@ -27,8 +29,10 @@ export function OuterCircleWorld({
 }: OuterCircleWorldProps) {
   return (
     <section className={`outer-circle-world outer-circle-${phase}`} aria-label="外圈万象廊">
-      <img className="outer-circle-background" src={outerGalleryBackground} alt="" aria-hidden="true" />
+      <img className="outer-circle-background outer-circle-background-desktop" src={outerGalleryBackground} alt="" aria-hidden="true" />
+      <img className="outer-circle-background outer-circle-background-mobile" src={outerGalleryEnvironment} alt="" aria-hidden="true" />
       <div className="outer-circle-vignette" aria-hidden="true" />
+      <SpiritBoatStage context="outer" />
 
       <button type="button" className="outer-return-button" onClick={onReturnInner}>
         <span aria-hidden="true">←</span> 返回船上
@@ -47,19 +51,21 @@ export function OuterCircleWorld({
           <span>看看外面正在发生什么。浏览不会加入活动，也不会读取船上的对话。</span>
         </header>
 
-        <div className="outer-portal-grid" aria-label="公开内容">
-          {items.map((item, index) => <article className={`outer-portal-card outer-theme-${item.coverTheme}`} key={item.id}>
-            <button type="button" onClick={() => onOpenItem(item)} aria-label={`查看：${item.title}`}>
-              <span className="outer-card-index" aria-hidden="true">0{index + 1}</span>
-              <span className="outer-card-lane">{item.laneLabel}</span>
-              <span className="outer-card-art" aria-hidden="true"><i /><i /><i /></span>
-              <strong>{item.title}</strong>
-              <span className="outer-card-summary">{item.summary}</span>
-              <span className="outer-card-time">{item.timeLabel}</span>
-              {item.lane === "possibly_relevant" && <small>编辑推荐 · 未读取你的私密对话</small>}
-              <span className="outer-card-open">看一眼 <b aria-hidden="true">↗</b></span>
-            </button>
-          </article>)}
+        <div className="outer-film-corridor">
+          <div className="outer-portal-grid" aria-label="公开内容">
+            {items.map((item, index) => <article className={`outer-portal-card outer-theme-${item.coverTheme}`} key={item.id}>
+              <button type="button" onClick={() => onOpenItem(item)} aria-label={`查看：${item.title}`}>
+                <span className="outer-card-index" aria-hidden="true">0{index + 1}</span>
+                <span className="outer-card-lane">{item.laneLabel}</span>
+                <span className="outer-card-art" aria-hidden="true"><i /><i /><i /></span>
+                <strong>{item.title}</strong>
+                <span className="outer-card-summary">{item.summary}</span>
+                <span className="outer-card-time">{item.timeLabel}</span>
+                {item.lane === "possibly_relevant" && <small>编辑推荐 · 未读取你的私密对话</small>}
+                <span className="outer-card-open">看一眼 <b aria-hidden="true">↗</b></span>
+              </button>
+            </article>)}
+          </div>
         </div>
 
         <footer className="outer-gallery-footnote">
