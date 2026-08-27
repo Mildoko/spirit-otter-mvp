@@ -7,6 +7,7 @@ import type {
 import type { AppEnv } from "../config/env.js";
 
 const allAgents: AgentIdV1[] = ["zen_deer", "spirit_otter", "bird_courier"];
+const birdCourier: AgentIdV1[] = ["bird_courier"];
 
 function enabledStatus(enabled: boolean, mode: AppEnv["OTTER_RUNTIME_MODE"]): CapabilityStatusV1 {
   if (!enabled) return "unavailable";
@@ -22,6 +23,40 @@ function feature(
   reasonCode?: ProductCapabilityV1["reasonCode"],
 ): ProductCapabilityV1 {
   return { id, status, dataMode, requiresExplicitAuthorization, agentIds, ...(reasonCode ? { reasonCode } : {}) };
+}
+
+function stagedStatus(
+  stagedMode: AppEnv["AGENT_HANDOFF_MODE"],
+  runtimeMode: AppEnv["OTTER_RUNTIME_MODE"],
+  implementationReady: boolean,
+): Pick<ProductCapabilityV1, "status" | "reasonCode"> {
+  if (stagedMode === "off") return { status: "unavailable", reasonCode: "feature_disabled" };
+  if (stagedMode === "shadow") return { status: "unavailable", reasonCode: "shadow_only" };
+  if (!implementationReady) return { status: "unavailable", reasonCode: "not_implemented" };
+  return { status: runtimeMode === "full" ? "available" : "demo_only" };
+}
+
+function stagedFeature(
+  id: ProductCapabilityV1["id"],
+  stagedMode: AppEnv["AGENT_HANDOFF_MODE"],
+  runtimeMode: AppEnv["OTTER_RUNTIME_MODE"],
+  options: {
+    implementationReady: boolean;
+    persistentWhenOn: boolean;
+    requiresExplicitAuthorization: boolean;
+    agentIds?: AgentIdV1[];
+  },
+): ProductCapabilityV1 {
+  const { implementationReady, persistentWhenOn, requiresExplicitAuthorization, agentIds = allAgents } = options;
+  const { status, reasonCode } = stagedStatus(stagedMode, runtimeMode, implementationReady);
+  const dataMode = status === "unavailable"
+    ? "none"
+    : persistentWhenOn && runtimeMode === "full"
+      ? "persistent"
+      : persistentWhenOn
+        ? "ephemeral"
+        : "none";
+  return feature(id, status, dataMode, requiresExplicitAuthorization, agentIds, reasonCode);
 }
 
 export function createCapabilityManifest(env: AppEnv): CapabilityManifestV1 {
@@ -52,6 +87,18 @@ export function createCapabilityManifest(env: AppEnv): CapabilityManifestV1 {
       feature("external_action", "unavailable", "none", true, allAgents, "not_implemented"),
       feature("feedback.voluntary", feedbackStatus, persistent ? "persistent" : feedbackStatus === "demo_only" ? "ephemeral" : "none", false, allAgents, mode === "lab" ? "runtime_mode" : undefined),
       feature("scene.world", sceneStatus, "none", false, allAgents, env.SCENE_WORLD_V1 ? undefined : "feature_disabled"),
+      stagedFeature("agent.handoff", env.AGENT_HANDOFF_MODE, mode, {
+        implementationReady: false, persistentWhenOn: true, requiresExplicitAuthorization: true,
+      }),
+      stagedFeature("interest.profile", env.INTEREST_PROFILE_MODE, mode, {
+        implementationReady: false, persistentWhenOn: true, requiresExplicitAuthorization: true, agentIds: birdCourier,
+      }),
+      stagedFeature("activity.catalog", env.ACTIVITY_CATALOG_MODE, mode, {
+        implementationReady: false, persistentWhenOn: false, requiresExplicitAuthorization: false, agentIds: birdCourier,
+      }),
+      stagedFeature("recommendation.personalized", env.RECOMMENDATION_MODE, mode, {
+        implementationReady: false, persistentWhenOn: false, requiresExplicitAuthorization: true, agentIds: birdCourier,
+      }),
     ],
   };
 }

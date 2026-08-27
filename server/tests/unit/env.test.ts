@@ -12,6 +12,18 @@ describe("runtime mode environment", () => {
     expect(parsed.FOLLOWUP_ENGINE_MODE).toBe("legacy");
     expect(() => loadEnv({ ...base, GUIDANCE_ENGINE_MODE: "sometimes" })).toThrow(/GUIDANCE_ENGINE_MODE/);
   });
+
+  it("defaults every P2 capability to off and rejects unknown modes", () => {
+    const parsed = loadEnv(base);
+    expect(parsed.AGENT_HANDOFF_MODE).toBe("off");
+    expect(parsed.INTEREST_PROFILE_MODE).toBe("off");
+    expect(parsed.ACTIVITY_CATALOG_MODE).toBe("off");
+    expect(parsed.RECOMMENDATION_MODE).toBe("off");
+
+    for (const key of ["AGENT_HANDOFF_MODE", "INTEREST_PROFILE_MODE", "ACTIVITY_CATALOG_MODE", "RECOMMENDATION_MODE"] as const) {
+      expect(() => loadEnv({ ...base, [key]: "sometimes" })).toThrow(new RegExp(key));
+    }
+  });
   it.each(["full", "demo", "lab"] as const)("accepts %s", (mode) => {
     expect(loadEnv({ ...base, OTTER_RUNTIME_MODE: mode }).OTTER_RUNTIME_MODE).toBe(mode);
   });

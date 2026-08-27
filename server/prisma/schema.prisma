@@ -101,6 +101,15 @@ enum MemoryRelationStatus {
   expired
 }
 
+enum AgentHandoffStatus {
+  proposed
+  authorized
+  completed
+  rejected
+  expired
+  safety_interrupted
+}
+
 model InviteCode {
   id        String         @id @default(cuid())
   codeHash  String         @unique
@@ -115,23 +124,24 @@ model InviteCode {
 }
 
 model AnonymousUser {
-  id                        String          @id @default(cuid())
-  researchId                String          @unique
-  adultConfirmedAt          DateTime
-  aiDisclosureAcceptedAt    DateTime
-  cloudProcessingAcceptedAt DateTime
-  dataConsentAcceptedAt     DateTime
+  id                           String           @id @default(cuid())
+  researchId                   String           @unique
+  adultConfirmedAt             DateTime
+  aiDisclosureAcceptedAt       DateTime
+  cloudProcessingAcceptedAt    DateTime
+  dataConsentAcceptedAt        DateTime
   deepInterpretationAcceptedAt DateTime
-  deepInterpretationEnabled Boolean         @default(true)
-  createdAt                 DateTime        @default(now())
-  lastActiveAt              DateTime        @default(now())
-  expiresAt                 DateTime
-  invite                    InviteCode?
-  sessions                  Session[]
-  conversations             Conversation[]
-  behaviorEvents            BehaviorEvent[]
-  memoryItems               MemoryItem[]
-  memoryRelations           MemoryRelation[]
+  deepInterpretationEnabled    Boolean          @default(true)
+  createdAt                    DateTime         @default(now())
+  lastActiveAt                 DateTime         @default(now())
+  expiresAt                    DateTime
+  invite                       InviteCode?
+  sessions                     Session[]
+  conversations                Conversation[]
+  behaviorEvents               BehaviorEvent[]
+  memoryItems                  MemoryItem[]
+  memoryRelations              MemoryRelation[]
+  agentHandoffs                AgentHandoff[]
 
   @@index([expiresAt])
   @@map("anonymous_users")
@@ -170,6 +180,7 @@ model Conversation {
   followups          FollowupTask[]
   safetyEvents       SafetyEvent[]
   memories           MemoryItem[]
+  agentHandoffs      AgentHandoff[]
 
   @@index([userId, updatedAt])
   @@map("conversations")
@@ -244,25 +255,25 @@ model StateSnapshot {
 }
 
 model SupportEvent {
-  id               String       @id @default(cuid())
-  conversationId   String
-  turnId           String       @unique
-  activeSpirit     ActiveSpirit
-  transitionStyle  String
-  routeReasonsJson Json
-  supportMode      String
-  riskLevel        String
-  primaryStrategy  String
-  planJson         Json
+  id                 String       @id @default(cuid())
+  conversationId     String
+  turnId             String       @unique
+  activeSpirit       ActiveSpirit
+  transitionStyle    String
+  routeReasonsJson   Json
+  supportMode        String
+  riskLevel          String
+  primaryStrategy    String
+  planJson           Json
   signalFeaturesJson Json?
-  responseStyleJson Json?
-  promptVersion    String
-  policyVersion    String
-  characterVersion String
-  createdAt        DateTime     @default(now())
-  expiresAt        DateTime
-  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  turn             Turn         @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  responseStyleJson  Json?
+  promptVersion      String
+  policyVersion      String
+  characterVersion   String
+  createdAt          DateTime     @default(now())
+  expiresAt          DateTime
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn               Turn         @relation(fields: [turnId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@index([expiresAt])
@@ -290,20 +301,20 @@ model ActionItem {
 }
 
 model FollowupTask {
-  id             String         @id @default(cuid())
-  conversationId String
-  actionId       String
-  dueAt          DateTime
-  status         FollowupStatus @default(pending)
-  outcomeState   FollowupOutcomeState @default(not_started)
+  id               String               @id @default(cuid())
+  conversationId   String
+  actionId         String
+  dueAt            DateTime
+  status           FollowupStatus       @default(pending)
+  outcomeState     FollowupOutcomeState @default(not_started)
   outcomeLabeledAt DateTime?
-  outcomeRevision Int           @default(0)
-  shownAt        DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  expiresAt      DateTime
-  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  action         ActionItem     @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  outcomeRevision  Int                  @default(0)
+  shownAt          DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  expiresAt        DateTime
+  conversation     Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  action           ActionItem           @relation(fields: [actionId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, status, dueAt])
   @@index([conversationId, outcomeState, outcomeLabeledAt])
@@ -330,46 +341,76 @@ model SafetyEvent {
 }
 
 model MemoryItem {
-  id              String            @id @default(cuid())
-  userId          String
-  conversationId  String?
-  kind            MemoryKind
-  content         String
-  structuredKey   String
-  structuredValue String?
-  contentHash     String
-  origin          MemoryOrigin
-  sensitivity     MemorySensitivity
-  importance      Float
-  confidence      Float
-  claimState      MemoryClaimState @default(asserted)
-  status          MemoryStatus      @default(active)
-  observedAt      DateTime
-  eventAt         DateTime?
-  validFrom       DateTime
-  validTo         DateTime?
-  reviewExpiresAt DateTime?
-  expiresAt       DateTime
-  supersedesId    String?
-  recallCount     Int               @default(0)
-  lastRecalledAt  DateTime?
-  schemaVersion   Int               @default(2)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  user            AnonymousUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversation    Conversation?     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  supersedes      MemoryItem?       @relation("MemorySupersession", fields: [supersedesId], references: [id], onDelete: SetNull)
-  supersededBy    MemoryItem[]      @relation("MemorySupersession")
-  evidence        MemoryEvidence[]
-  revisions       MemoryRevision[]
-  outgoingRelations MemoryRelation[] @relation("MemoryRelationSource")
-  incomingRelations MemoryRelation[] @relation("MemoryRelationTarget")
+  id                String            @id @default(cuid())
+  userId            String
+  conversationId    String?
+  kind              MemoryKind
+  content           String
+  structuredKey     String
+  structuredValue   String?
+  contentHash       String
+  origin            MemoryOrigin
+  sensitivity       MemorySensitivity
+  importance        Float
+  confidence        Float
+  claimState        MemoryClaimState  @default(asserted)
+  status            MemoryStatus      @default(active)
+  observedAt        DateTime
+  eventAt           DateTime?
+  validFrom         DateTime
+  validTo           DateTime?
+  reviewExpiresAt   DateTime?
+  expiresAt         DateTime
+  supersedesId      String?
+  recallCount       Int               @default(0)
+  lastRecalledAt    DateTime?
+  schemaVersion     Int               @default(2)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              AnonymousUser     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation      Conversation?     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  supersedes        MemoryItem?       @relation("MemorySupersession", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy      MemoryItem[]      @relation("MemorySupersession")
+  evidence          MemoryEvidence[]
+  revisions         MemoryRevision[]
+  outgoingRelations MemoryRelation[]  @relation("MemoryRelationSource")
+  incomingRelations MemoryRelation[]  @relation("MemoryRelationTarget")
 
   @@index([userId, status, expiresAt])
   @@index([userId, kind, structuredKey, status])
   @@index([conversationId, observedAt])
   @@index([contentHash])
   @@map("memory_items")
+}
+
+model AgentHandoff {
+  id                String             @id
+  userId            String
+  conversationId    String
+  status            AgentHandoffStatus @default(proposed)
+  fromAgentId       String
+  toAgentId         String
+  initiatedBy       String
+  reason            String
+  focus             String
+  publicItemId      String?
+  actionId          String?
+  followupId        String?
+  authorization     String?
+  authorizedAt      DateTime?
+  completedAt       DateTime?
+  proposalExpiresAt DateTime
+  expiresAt         DateTime
+  schemaVersion     Int                @default(1)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              AnonymousUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation      Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, expiresAt])
+  @@index([conversationId, status, createdAt])
+  @@index([status, proposalExpiresAt])
+  @@map("agent_handoffs")
 }
 
 model MemoryRelation {
@@ -389,13 +430,13 @@ model MemoryRelation {
   validTo           DateTime?
   reviewExpiresAt   DateTime?
   presentedAt       DateTime?
-  presentationCount Int                 @default(0)
+  presentationCount Int                  @default(0)
   expiresAt         DateTime
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   user              AnonymousUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sourceMemory      MemoryItem            @relation("MemoryRelationSource", fields: [sourceMemoryId], references: [id], onDelete: Cascade)
-  targetMemory      MemoryItem            @relation("MemoryRelationTarget", fields: [targetMemoryId], references: [id], onDelete: Cascade)
+  sourceMemory      MemoryItem           @relation("MemoryRelationSource", fields: [sourceMemoryId], references: [id], onDelete: Cascade)
+  targetMemory      MemoryItem           @relation("MemoryRelationTarget", fields: [targetMemoryId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, expiresAt])
   @@index([sourceMemoryId, status])

@@ -34,4 +34,47 @@ describe("capability manifest v1", () => {
     expect(manifest.agents.every((agent) => agent.chat === "available")).toBe(true);
     expect(manifest.agents.every((agent) => agent.voicePlayback === "unavailable" && agent.longTermMemory === "unavailable")).toBe(true);
   });
+
+  it("keeps all P2 capabilities unavailable by default", () => {
+    const manifest = createCapabilityManifest(loadEnv({ ...base, OTTER_RUNTIME_MODE: "full" }));
+    for (const id of ["agent.handoff", "interest.profile", "activity.catalog", "recommendation.personalized"] as const) {
+      expect(manifest.capabilities.find((item) => item.id === id)).toMatchObject({
+        status: "unavailable",
+        dataMode: "none",
+        reasonCode: "feature_disabled",
+      });
+    }
+  });
+
+  it("does not advertise shadow P2 capabilities as available", () => {
+    const manifest = createCapabilityManifest(loadEnv({
+      ...base,
+      OTTER_RUNTIME_MODE: "demo",
+      AGENT_HANDOFF_MODE: "shadow",
+      INTEREST_PROFILE_MODE: "shadow",
+      ACTIVITY_CATALOG_MODE: "shadow",
+      RECOMMENDATION_MODE: "shadow",
+    }));
+    const staged = manifest.capabilities.filter((item) => ["agent.handoff", "interest.profile", "activity.catalog", "recommendation.personalized"].includes(item.id));
+    expect(staged).toHaveLength(4);
+    expect(staged.every((item) => item.status === "unavailable" && item.reasonCode === "shadow_only" && item.dataMode === "none")).toBe(true);
+  });
+
+  it("does not claim configured-on P2 capabilities before their implementations are ready", () => {
+    const full = createCapabilityManifest(loadEnv({
+      ...base,
+      OTTER_RUNTIME_MODE: "full",
+      AGENT_HANDOFF_MODE: "on",
+      INTEREST_PROFILE_MODE: "on",
+      ACTIVITY_CATALOG_MODE: "on",
+      RECOMMENDATION_MODE: "on",
+    }));
+    expect(full.capabilities.find((item) => item.id === "agent.handoff")).toMatchObject({ status: "unavailable", dataMode: "none", reasonCode: "not_implemented", requiresExplicitAuthorization: true });
+    expect(full.capabilities.find((item) => item.id === "interest.profile")).toMatchObject({ status: "unavailable", dataMode: "none", reasonCode: "not_implemented", requiresExplicitAuthorization: true, agentIds: ["bird_courier"] });
+    expect(full.capabilities.find((item) => item.id === "activity.catalog")).toMatchObject({ status: "unavailable", dataMode: "none", reasonCode: "not_implemented", requiresExplicitAuthorization: false, agentIds: ["bird_courier"] });
+    expect(full.capabilities.find((item) => item.id === "recommendation.personalized")).toMatchObject({ status: "unavailable", dataMode: "none", reasonCode: "not_implemented", requiresExplicitAuthorization: true, agentIds: ["bird_courier"] });
+    expect(full.capabilities.find((item) => item.id === "community.write")?.status).toBe("unavailable");
+    expect(full.capabilities.find((item) => item.id === "external_action")?.status).toBe("unavailable");
+
+  });
 });

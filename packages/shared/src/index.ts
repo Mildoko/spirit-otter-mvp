@@ -40,7 +40,11 @@ export type ProductCapabilityIdV1 =
   | "community.write"
   | "external_action"
   | "feedback.voluntary"
-  | "scene.world";
+  | "scene.world"
+  | "agent.handoff"
+  | "interest.profile"
+  | "activity.catalog"
+  | "recommendation.personalized";
 
 export interface ProductCapabilityV1 {
   id: ProductCapabilityIdV1;
@@ -48,7 +52,7 @@ export interface ProductCapabilityV1 {
   dataMode: CapabilityDataModeV1;
   requiresExplicitAuthorization: boolean;
   agentIds: AgentIdV1[];
-  reasonCode?: "feature_disabled" | "research_only" | "not_implemented" | "runtime_mode";
+  reasonCode?: "feature_disabled" | "shadow_only" | "research_only" | "not_implemented" | "runtime_mode";
 }
 
 export interface AgentCapabilityV1 {
@@ -106,6 +110,58 @@ export interface PublicPortalFeedV01 {
     joinGroup: false;
     personalizedRecommendation: false;
   };
+}
+
+export type AgentHandoffReasonV1 = "user_requested" | "capability_match" | "public_item_discussion";
+export type AgentHandoffFocusV1 = "emotional_support" | "meaning_reflection" | "practical_planning" | "public_item_discussion";
+
+/**
+ * A handoff does not copy conversation text. All agents operate in the same
+ * private conversation; this object carries only a user-visible routing choice.
+ */
+export interface AgentHandoffContextV1 {
+  focus: AgentHandoffFocusV1;
+  publicItemId: string | null;
+  actionId: string | null;
+  followupId: string | null;
+}
+
+export interface AgentHandoffProposalV1 {
+  schemaVersion: 1;
+  id: string;
+  status: "proposed";
+  fromAgentId: AgentIdV1;
+  toAgentId: AgentIdV1;
+  initiatedBy: "user" | "agent";
+  reason: AgentHandoffReasonV1;
+  context: AgentHandoffContextV1;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface AuthorizedAgentHandoffV1 extends Omit<AgentHandoffProposalV1, "status"> {
+  status: "authorized";
+  authorization: "explicit_user_confirm";
+  authorizedAt: string;
+}
+
+export type InterestSelectionV1 =
+  | { category: "topic"; valueCode: "arts_culture" | "outdoors" | "learning" | "wellbeing" | "community" | "food_music" }
+  | { category: "time_window"; valueCode: "weekday_day" | "weekday_evening" | "weekend_day" | "weekend_evening" | "flexible" }
+  | { category: "location_scope"; valueCode: "same_city" | "nearby_city" | "online_only" | "no_preference" }
+  | { category: "budget_band"; valueCode: "free" | "under_100" | "100_300" | "over_300" | "flexible" }
+  | { category: "social_load"; valueCode: "solo_friendly" | "small_group" | "group" | "no_preference" }
+  | { category: "format"; valueCode: "in_person" | "online" | "hybrid" | "no_preference" };
+
+export interface InterestProfileEntryV1 {
+  schemaVersion: 1;
+  id: string;
+  selection: InterestSelectionV1;
+  source: "user_explicit_selection";
+  status: "confirmed";
+  authorizedAt: string;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface AudioCueV1 {

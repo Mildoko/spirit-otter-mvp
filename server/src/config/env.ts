@@ -18,6 +18,7 @@ const booleanFromStringDefaultFalse = z
   .transform((value) => value === "true");
 
 const migrationMode = z.enum(["legacy", "shadow", "new"]).default("legacy");
+const p2CapabilityMode = z.enum(["off", "shadow", "on"]).default("off");
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -50,6 +51,10 @@ const envSchema = z.object({
   GUIDANCE_ENGINE_MODE: migrationMode,
   ACTION_ENGINE_MODE: migrationMode,
   FOLLOWUP_ENGINE_MODE: migrationMode,
+  AGENT_HANDOFF_MODE: p2CapabilityMode,
+  INTEREST_PROFILE_MODE: p2CapabilityMode,
+  ACTIVITY_CATALOG_MODE: p2CapabilityMode,
+  RECOMMENDATION_MODE: p2CapabilityMode,
   LANGFUSE_PUBLIC_KEY: z.string().default(""),
   LANGFUSE_SECRET_KEY: z.string().default(""),
   LANGFUSE_BASE_URL: z.string().url().default("https://cloud.langfuse.com"),
